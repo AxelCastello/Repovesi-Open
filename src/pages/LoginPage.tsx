@@ -1,54 +1,54 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { normalizeUsername, usernameToEmail } from "../lib/usernameAuth";
+import {
+  normalizeUsername,
+  usernameToEmail,
+  usernameToPassword,
+} from "../lib/usernameAuth";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
-  const [pin, setPin] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const displayName = username.trim();
   const normalized = normalizeUsername(displayName);
   const derivedEmail = normalized ? usernameToEmail(displayName) : "";
+  const derivedPassword = normalized ? usernameToPassword(displayName) : "";
 
-  async function onSignInWithPassword() {
+  async function onSignIn() {
+    if (!normalized) {
+      setStatus("Enter a valid username.");
+      return;
+    }
+
     setBusy(true);
     setStatus(null);
+
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: derivedEmail,
-        password: pin,
+        password: derivedPassword,
       });
-      if (error) throw error;
-      setStatus("Signed in.");
+
+      if (signInError) {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: derivedEmail,
+          password: derivedPassword,
+          options: {
+            data: {
+              full_name: displayName,
+              username: normalized,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
+        setStatus("Account created. You should now be able to sign in again.");
+      } else {
+        setStatus("Signed in.");
+      }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Failed to sign in");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onSignUpWithPassword() {
-    setBusy(true);
-    setStatus(null);
-    try {
-      const { error } = await supabase.auth.signUp({
-        email: derivedEmail,
-        password: pin,
-        options: {
-          emailRedirectTo: window.location.origin,
-          data: {
-            // Used for display in standings/admin pages.
-            full_name: displayName,
-            username: normalized,
-          },
-        },
-      });
-      if (error) throw error;
-      setStatus("Account created. You can now sign in with the same username + PIN.");
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : "Failed to sign up");
     } finally {
       setBusy(false);
     }
@@ -68,40 +68,19 @@ export default function LoginPage() {
             placeholder="Anton S"
           />
         </label>
-        <label>
-          PIN
-          <input
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
-            type="password"
-            placeholder="4-8 digits"
-            autoComplete="current-password"
-            inputMode="numeric"
-          />
-        </label>
         <div className="row">
-          <button
-            disabled={busy || normalized.length < 3 || pin.length < 4}
-            onClick={onSignInWithPassword}
-          >
+          <button disabled={busy || normalized.length < 3} onClick={onSignIn}>
             {busy ? "Working..." : "Sign in"}
-          </button>
-          <button
-            disabled={busy || normalized.length < 3 || pin.length < 4}
-            onClick={onSignUpWithPassword}
-          >
-            {busy ? "Working..." : "Create account"}
           </button>
         </div>
 
         <div className="muted" style={{ fontSize: 12 }}>
-          Enter your name + a 4–8 digit PIN. This is “passwordless” in practice (no email links), but
-          still prevents impersonation.
+          Enter the name that matches the whitelist. You do not need to enter a password.
         </div>
         {status ? <div className="muted">{status}</div> : null}
       </div>
       <p className="muted" style={{ marginBottom: 0 }}>
-        After signing in, an admin must add your account to the competition whitelist.
+        After signing in, an admin must add your account to the competition whitelist if it is not already.
       </p>
     </div>
   );

@@ -347,3 +347,51 @@ th {
   color: rgba(26, 18, 10, 0.9);
 }
 
+@media (max-width: 900px) {
+  .card {
+    padding: 14px;
+  }
+
+  .row {
+    gap: 10px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    width: 100%;
+  }
+
+  .field {
+    gap: 10px;
+  }
+
+  .matrix-table {
+    font-size: 12px;
+  }
+
+  .matrix-table th,
+  .matrix-table td {
+    min-width: 120px;
+    padding: 8px;
+  }
+
+  .matrix-sticky-col {
+    position: static;
+    background: rgba(239, 232, 219, 0.92);
+  }
+}
+
+@media (max-width: 600px) {
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .podium-wrap,
+  .matrix-table {
+    width: 100%;
+  }
+}
+

@@ -6,6 +6,7 @@ type Candidate = {
   player_id: string;
   player_name: string;
   current_odds: number;
+  balance: number;
 };
 
 type BetRow = {
@@ -107,6 +108,7 @@ export default function BetPage() {
         player_id: String(r.player_id),
         player_name: String(r.player_name),
         current_odds: Number(r.current_odds ?? 0),
+        balance: Number(r.balance ?? 0),
       }));
       setPlayers(candidates);
       if (!pickUserId && candidates[0]) setPickUserId(candidates[0].player_id);
@@ -296,9 +298,9 @@ export default function BetPage() {
       {status ? <div className="card muted">{status}</div> : null}
 
       {!loading && competition ? (
-        <div style={{ display: "grid", gap: 14 }}>
-          <div className="row">
-          <div className="card" style={{ flex: "1 1 420px" }}>
+        <>
+          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", alignItems: "start" }}>
+            <div className="card" style={{ flex: "1 1 420px" }}>
             <div className="muted">Competition: {competition.name}</div>
             <div className="muted">Current round: {round ? `#${round.number} (open)` : "No open round"}</div>
             <div style={{ marginTop: 10 }} className="badge">
@@ -312,7 +314,7 @@ export default function BetPage() {
                   <select value={pickUserId} onChange={(e) => setPickUserId(e.target.value)} style={{ marginTop: 6 }}>
                     {players.map((p) => (
                       <option key={p.player_id} value={p.player_id}>
-                        {p.player_name} (odds {p.current_odds.toFixed(2)})
+                        {p.player_name} (odds {p.current_odds.toFixed(2)}, bal {p.balance.toFixed(2)})
                       </option>
                     ))}
                   </select>
@@ -426,7 +428,7 @@ export default function BetPage() {
                     {players.map((p) => (
                       <tr key={p.player_id}>
                         <td className="matrix-sticky-col">
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                             <div style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.25)" }}>
                               <div style={{ padding: 7, fontSize: 12, fontWeight: 700, textAlign: "center" }}>
                                 {p.player_name
@@ -437,7 +439,12 @@ export default function BetPage() {
                                   .join("")}
                               </div>
                             </div>
-                            <div>{p.player_name}</div>
+                            <div>
+                              <div>{p.player_name}</div>
+                              <div className="muted" style={{ fontSize: 12 }}>
+                                {p.balance.toFixed(2)} db
+                              </div>
+                            </div>
                           </div>
                         </td>
                         {roundsAsc.map((r) => {
@@ -489,7 +496,7 @@ export default function BetPage() {
               </div>
             )}
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );

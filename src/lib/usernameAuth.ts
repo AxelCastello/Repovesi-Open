@@ -16,6 +16,12 @@ export function usernameToEmail(username: string) {
   return `${slug}@repovesi-open.local`;
 }
 
+export function usernameToPassword(username: string) {
+  const slug = slugifyUsername(username);
+  // This is a stable password derived from the username so the user only needs to enter the name.
+  return `repovesi-${slug}-login`;
+}
+
 export function normalizeUsername(username: string) {
   return slugifyUsername(username);
 }
