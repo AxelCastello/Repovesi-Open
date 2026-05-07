@@ -190,7 +190,8 @@ select
   coalesce(max(rr.points), 0)::int as best_round_points,
   coalesce(avg(rr.points), 0)::numeric(10,2) as avg_round_points,
   coalesce(o.current_odds, public.seed_initial_odds(cp.competition_id, cp.user_id))::numeric(6,2) as current_odds,
-  coalesce(w.balance, 100.00)::numeric(12,2) as balance
+  coalesce(w.balance, 100.00)::numeric(12,2) as balance,
+  coalesce(max(b.payout), 0)::numeric(12,2) as best_payout
 from public.competition_players cp
 join public.competitions c on c.id = cp.competition_id
 join auth.users u on u.id = cp.user_id
@@ -199,6 +200,11 @@ left join public.round_results rr
 left join public.rounds r
   on r.id = rr.round_id
  and r.competition_id = cp.competition_id
+left join public.bets b
+  on b.competition_id = cp.competition_id
+ and b.user_id = cp.user_id
+ and b.settled = true
+ and b.won = true
 left join public.competition_odds o
   on o.competition_id = cp.competition_id
  and o.user_id = cp.user_id
@@ -411,7 +417,10 @@ create policy "members can view bets"
 on public.bets
 for select
 to authenticated
-using (user_id = auth.uid());
+using (
+  public.is_active_competition_member(competition_id)
+  or public.is_competition_admin(competition_id)
+);
 
 
 -- ------------------------
@@ -592,6 +601,7 @@ declare
   v_balance numeric(12,2);
   v_odds numeric(6,2);
   v_id uuid;
+  v_existing_bets integer;
 begin
   if p_amount is null or p_amount <= 0 then
     raise exception 'Invalid amount';
@@ -612,6 +622,16 @@ begin
 
   if not public.is_active_competition_member(v_comp) then
     raise exception 'Not authorized';
+  end if;
+
+  -- Limit: max 3 bets per player per round.
+  select count(*)::int
+  into v_existing_bets
+  from public.bets b
+  where b.round_id = p_round_id
+    and b.user_id = auth.uid();
+  if v_existing_bets >= 3 then
+    raise exception 'Bet limit reached: max 3 bets per round';
   end if;
 
   -- Backfill safety for players created before wallet/odds triggers existed.
@@ -902,4 +922,81 @@ using (
       and cp.role = 'admin'
   )
 );
+
+-- ------------------------
+-- Invites by username (Fix: whitelist before first login)
+-- ------------------------
+
+create table if not exists public.competition_invites (
+  competition_id uuid not null references public.competitions(id) on delete cascade,
+  username text not null, -- normalized (e.g. "anton-s")
+  role text not null default 'player' check (role in ('player', 'admin')),
+  created_at timestamptz not null default now(),
+  primary key (competition_id, username)
+);
+
+alter table public.competition_invites enable row level security;
+
+-- Admins can manage invites.
+drop policy if exists "admins can view competition_invites" on public.competition_invites;
+create policy "admins can view competition_invites"
+on public.competition_invites
+for select
+to authenticated
+using (public.is_competition_admin(competition_id));
+
+drop policy if exists "admins can insert competition_invites" on public.competition_invites;
+create policy "admins can insert competition_invites"
+on public.competition_invites
+for insert
+to authenticated
+with check (public.is_competition_admin(competition_id));
+
+drop policy if exists "admins can update competition_invites" on public.competition_invites;
+create policy "admins can update competition_invites"
+on public.competition_invites
+for update
+to authenticated
+using (public.is_competition_admin(competition_id))
+with check (public.is_competition_admin(competition_id));
+
+drop policy if exists "admins can delete competition_invites" on public.competition_invites;
+create policy "admins can delete competition_invites"
+on public.competition_invites
+for delete
+to authenticated
+using (public.is_competition_admin(competition_id));
+
+-- When a user first signs up (profile created), automatically add them to any competition invites.
+create or replace function public.handle_profile_invites()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.competition_players (competition_id, user_id, role)
+  select
+    ci.competition_id,
+    new.user_id,
+    ci.role
+  from public.competition_invites ci
+  where ci.username = new.username
+  on conflict (competition_id, user_id) do update
+    set role = excluded.role;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_profile_created on public.profiles;
+create trigger on_profile_created
+after insert on public.profiles
+for each row execute procedure public.handle_profile_invites();
+
+drop trigger if exists on_profile_updated on public.profiles;
+create trigger on_profile_updated
+after update on public.profiles
+for each row execute procedure public.handle_profile_invites();
+
 

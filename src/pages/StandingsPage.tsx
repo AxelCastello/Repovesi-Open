@@ -6,12 +6,11 @@ type StandingRow = {
   player_id: string;
   player_name: string;
   total_points: number;
-  rounds_count: number;
   best_round_points: number;
   avg_round_points: number;
   current_odds: number;
   balance: number;
-  last_submission_at: string | null;
+  best_payout: number;
 };
 
 function hashStringToInt(input: string) {
@@ -119,7 +118,7 @@ export default function StandingsPage() {
         const { data, error: standErr } = await supabase
           .from("standings")
           .select(
-            "player_id,player_name,total_points,rounds_count,best_round_points,avg_round_points,current_odds,balance,last_submission_at",
+            "player_id,player_name,total_points,best_round_points,avg_round_points,current_odds,balance,best_payout",
           );
         if (standErr) throw standErr;
 
@@ -129,20 +128,18 @@ export default function StandingsPage() {
           player_id: String(r.player_id ?? ""),
           player_name: String(r.player_name ?? ""),
           total_points: Number(r.total_points ?? 0),
-          rounds_count: Number(r.rounds_count ?? 0),
           best_round_points: Number(r.best_round_points ?? 0),
           avg_round_points: Number(r.avg_round_points ?? 0),
           current_odds: Number(r.current_odds ?? 0),
           balance: Number(r.balance ?? 0),
-          last_submission_at: r.last_submission_at ? String(r.last_submission_at) : null,
+          best_payout: Number(r.best_payout ?? 0),
         }));
 
-        // Tie-breaker: most recent submission first, then higher points.
+        // Tie-breaker: best round points first, then higher totals, then name (deterministic).
         castRows.sort((a, b) => {
           if (b.total_points !== a.total_points) return b.total_points - a.total_points;
-          const at = a.last_submission_at ? new Date(a.last_submission_at).getTime() : 0;
-          const bt = b.last_submission_at ? new Date(b.last_submission_at).getTime() : 0;
-          return bt - at;
+          if (b.best_round_points !== a.best_round_points) return b.best_round_points - a.best_round_points;
+          return a.player_name.localeCompare(b.player_name);
         });
 
         setRows(castRows);
@@ -207,26 +204,26 @@ export default function StandingsPage() {
             </div>
           ) : (
             <>
-              <div className="card leaderboard-surface" style={{ marginTop: 12 }}>
+              <div className="card leaderboard-surface podium-stage" style={{ marginTop: 12 }}>
                 <div className="muted" style={{ marginBottom: 10 }}>
                   Leaderboard
                 </div>
 
                 <div className="podium-wrap">
                   {[
-                    { label: "2nd", row: podium.second, tall: false },
-                    { label: "1st", row: podium.first, tall: true },
-                    { label: "3rd", row: podium.third, tall: false },
+                    { label: "2nd", row: podium.second, tall: false, rankClass: "podium-rank-2" },
+                    { label: "1st", row: podium.first, tall: true, rankClass: "podium-rank-1" },
+                    { label: "3rd", row: podium.third, tall: false, rankClass: "podium-rank-3" },
                   ].map((slot) => (
                     <div
                       key={slot.label}
-                      className={`podium-card ${slot.tall ? "tall" : "short"}`}
+                      className={`podium-card ${slot.tall ? "tall" : "short"} ${slot.rankClass}`}
                     >
                       <div className="row" style={{ justifyContent: "space-between" }}>
                         <div
                           style={{
                             fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                            color: "rgba(26, 18, 10, 0.88)",
+                            color: "rgba(74, 69, 64, 0.88)",
                           }}
                         >
                           {slot.label}
@@ -246,10 +243,10 @@ export default function StandingsPage() {
                               {slot.row.player_name}
                             </div>
                             <div className="statline">
-                              <span className="badge">{slot.row.rounds_count} rounds</span>
                               <span className="badge">best {slot.row.best_round_points}</span>
                               <span className="badge">avg {slot.row.avg_round_points.toFixed(1)}</span>
                               <span className="badge">odds {slot.row.current_odds.toFixed(2)}</span>
+                              <span className="badge">best payout {slot.row.best_payout.toFixed(2)} db</span>
                             </div>
                           </div>
                         </div>
@@ -262,25 +259,20 @@ export default function StandingsPage() {
                           <div
                             style={{
                               fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                              color: "rgba(26, 18, 10, 0.9)",
+                              color: "rgba(74, 69, 64, 0.9)",
                             }}
                           >
                             {slot.row.total_points} pts
                           </div>
                           <div className="muted" style={{ fontSize: 12 }}>
-                            {slot.row.last_submission_at
-                              ? new Date(slot.row.last_submission_at).toLocaleDateString()
-                              : "—"}
+                            {slot.row.balance.toFixed(2)} db left
                           </div>
                         </div>
                       ) : null}
 
-                      <div
-                        className={`pedestal ${
-                          slot.label === "1st" ? "rank-1" : slot.label === "2nd" ? "rank-2" : "rank-3"
-                        }`}
-                        aria-hidden="true"
-                      />
+                      <div className="podium-logo-wrap" aria-hidden="true">
+                        <img src="/gamlakarleby-crest.png" alt="" className="podium-logo" />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -298,7 +290,7 @@ export default function StandingsPage() {
                         gap: 10,
                         alignItems: "center",
                         padding: "10px 10px",
-                        border: "1px solid rgba(26, 18, 10, 0.14)",
+                        border: "1px solid var(--line)",
                         borderRadius: 12,
                         background: "rgba(255,255,255,0.30)",
                       }}
@@ -306,7 +298,7 @@ export default function StandingsPage() {
                       <div
                         style={{
                           fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                          color: "rgba(26, 18, 10, 0.9)",
+                          color: "rgba(74, 69, 64, 0.9)",
                         }}
                       >
                         #{r.rank}
@@ -321,22 +313,19 @@ export default function StandingsPage() {
                           <span className="badge">avg {r.avg_round_points.toFixed(1)}</span>{" "}
                           <span className="badge">odds {r.current_odds.toFixed(2)}</span>{" "}
                           <span className="badge">{r.balance.toFixed(2)} db</span>{" "}
-                          <span className="badge">
-                            last {r.last_submission_at ? new Date(r.last_submission_at).toLocaleDateString() : "—"}
-                          </span>
                         </div>
                       </div>
                       <div
                         style={{
                           fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                          color: "rgba(26, 18, 10, 0.9)",
+                          color: "rgba(74, 69, 64, 0.9)",
                           textAlign: "right",
                         }}
                       >
                         {r.total_points} pts
                       </div>
                       <div className="muted" style={{ textAlign: "right" }}>
-                        {r.rounds_count} rounds
+                        best payout {r.best_payout.toFixed(2)} db
                       </div>
                     </div>
                   ))}

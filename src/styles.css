@@ -115,58 +115,86 @@ a {
   align-items: end;
 }
 
+.podium-stage {
+  background: linear-gradient(180deg, #040404, #111111);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.podium-stage .muted {
+  color: rgba(244, 236, 223, 0.78);
+}
+
 .podium-card {
-  border: 1px solid rgba(84, 74, 66, 0.18);
-  border-radius: 14px;
-  padding: 14px;
-  background: rgba(255, 255, 255, 0.38);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 18px 18px 60px;
+  background: linear-gradient(180deg, rgba(10, 10, 10, 0.98), rgba(18, 18, 18, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 30px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   position: relative;
 }
 
+.podium-stage .podium-card,
+.podium-stage .podium-card * {
+  color: rgba(248, 245, 233, 0.96) !important;
+}
+
+.podium-rank-1 {
+  border: 2px solid #d4af37;
+  box-shadow:
+    0 0 0 2px rgba(212, 175, 55, 0.18),
+    0 0 24px rgba(212, 175, 55, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.podium-rank-2 {
+  border: 2px solid #b9bec6;
+  box-shadow:
+    0 0 0 2px rgba(185, 190, 198, 0.18),
+    0 0 20px rgba(185, 190, 198, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.podium-rank-3 {
+  border: 2px solid #b87333;
+  box-shadow:
+    0 0 0 2px rgba(184, 115, 51, 0.18),
+    0 0 20px rgba(184, 115, 51, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
 .podium-card.tall {
-  min-height: 192px;
+  min-height: 212px;
 }
 
 .podium-card.short {
-  min-height: 164px;
+  min-height: 176px;
 }
 
-.pedestal {
-  margin-top: 10px;
-  height: 56px;
-  border-radius: 12px;
-  border: 1px solid rgba(84, 74, 66, 0.18);
-  background: linear-gradient(180deg, rgba(196, 164, 90, 0.3), rgba(140, 59, 54, 0.08));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 12px 18px rgba(10, 7, 3, 0.25);
-  position: relative;
-  overflow: hidden;
-}
-
-.pedestal::before {
-  content: "";
+.podium-logo-wrap {
   position: absolute;
-  inset: 0;
-  opacity: 0.25;
-  background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.2), transparent, rgba(0, 0, 0, 0.2));
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  justify-content: center;
+  align-items: center;
 }
 
-.pedestal.rank-1 {
-  height: 72px;
-  background: linear-gradient(180deg, rgba(196, 164, 90, 0.45), rgba(140, 59, 54, 0.14));
-}
-
-.pedestal.rank-2 {
-  height: 62px;
-}
-
-.pedestal.rank-3 {
-  height: 58px;
+.podium-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: radial-gradient(circle, rgba(255,255,255,0.15), rgba(0,0,0,0.55));
+  box-shadow:
+    0 0 12px rgba(255, 255, 255, 0.14),
+    0 14px 28px rgba(0, 0, 0, 0.35);
 }
 
 .statline {
@@ -267,6 +295,43 @@ table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 12px;
+}
+
+/* Betting matrix (players x rounds) */
+.matrix-table {
+  border-collapse: collapse;
+  width: max-content;
+  font-size: 13px;
+}
+
+.matrix-table th,
+.matrix-table td {
+  border: 1px solid var(--line);
+  padding: 10px 10px;
+  vertical-align: top;
+  min-width: 150px;
+}
+
+.matrix-table thead th {
+  background: rgba(196, 164, 90, 0.12);
+  color: var(--ink);
+}
+
+.matrix-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: rgba(239, 232, 219, 0.92);
+  min-width: 220px;
+}
+
+.matrix-round-col {
+  min-width: 160px;
+  text-align: left;
+}
+
+.matrix-cell {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 th,

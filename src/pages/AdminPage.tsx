@@ -50,6 +50,7 @@ export default function AdminPage() {
   const [rounds, setRounds] = useState<RoundRow[]>([]);
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
   const [roundPoints, setRoundPoints] = useState<Record<string, number>>({});
+  const [bulkPoints, setBulkPoints] = useState<number>(0);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -250,38 +251,19 @@ export default function AdminPage() {
     setBusy(true);
     setStatus(null);
     try {
-      const { data: profiles, error: profileErr } = await supabase
-        .from("profiles")
-        .select("user_id,username,display_name")
-        .eq("username", normalized)
-        .limit(1);
-      if (profileErr) throw profileErr;
-
-      const profile = (profiles?.[0] ?? null) as ProfileRow | null;
-      if (!profile) {
-        throw new Error(
-          `No user found for username "${normalized}". They must create an account first.`,
-        );
-      }
-
-      const { error: insertErr } = await supabase.from("competition_players").insert({
-        competition_id: selectedCompetitionId,
-        user_id: profile.user_id,
-        role: roleToAdd,
-      });
+      const { error: insertErr } = await supabase.from("competition_invites").upsert(
+        {
+          competition_id: selectedCompetitionId,
+          username: normalized,
+          role: roleToAdd,
+        },
+        { onConflict: "competition_id,username" },
+      );
       if (insertErr) throw insertErr;
 
       setUsernameToAdd("");
       setRoleToAdd("player");
-      setStatus(`Player added: ${profile.display_name}`);
-
-      const { data: playerRows, error: playersErr } = await supabase
-        .from("competition_players_with_names")
-        .select("competition_id,user_id,player_name,role")
-        .eq("competition_id", selectedCompetitionId)
-        .order("player_name", { ascending: true });
-      if (playersErr) throw playersErr;
-      setPlayers((playerRows ?? []) as CompetitionPlayerRow[]);
+      setStatus(`Invited: ${normalized}. They will appear when they first log in.`);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Failed to add player");
     } finally {
@@ -406,6 +388,17 @@ export default function AdminPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function applyBulkPoints(value: number) {
+    const v = Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0);
+    setRoundPoints((prev) => {
+      const next = { ...prev };
+      players.forEach((p) => {
+        next[p.user_id] = v;
+      });
+      return next;
+    });
   }
 
   return (
@@ -546,11 +539,11 @@ export default function AdminPage() {
 
           <div className="field">
             <label>
-              username
+              player name
               <input
                 value={usernameToAdd}
                 onChange={(e) => setUsernameToAdd(e.target.value)}
-                placeholder="anton-s"
+                placeholder="Anton S"
               />
             </label>
 
@@ -572,8 +565,8 @@ export default function AdminPage() {
             </button>
 
             <div className="muted" style={{ fontSize: 12 }}>
-              The player must create an account first, so a `profiles` row exists to look them up by
-              username.
+              Add by name now. The user is activated automatically when they sign up / log in for
+              the first time.
             </div>
           </div>
         </div>
@@ -603,18 +596,27 @@ export default function AdminPage() {
               Enter points for this round and settle bets.
             </div>
 
-            <div style={{ display: "grid", gap: 8 }}>
+            <div className="row" style={{ gap: 10, marginTop: 8 }}>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={bulkPoints}
+                onChange={(e) => setBulkPoints(Number(e.target.value))}
+                style={{ flex: "0 0 140px" }}
+              />
+              <button disabled={busy || !players.length} onClick={() => applyBulkPoints(bulkPoints)}>
+                Set all
+              </button>
+              <button disabled={busy || !players.length} onClick={() => applyBulkPoints(0)}>
+                Zero all
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
               {players.map((p) => (
-                <div
-                  key={p.user_id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 130px",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <div>{p.player_name}</div>
+                <div key={p.user_id} style={{ display: "grid", gap: 6 }}>
+                  <div className="muted">{p.player_name}</div>
                   <input
                     type="number"
                     min={0}

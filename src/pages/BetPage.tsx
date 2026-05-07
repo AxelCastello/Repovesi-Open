@@ -20,8 +20,21 @@ type RoundResultRow = {
   round_id: string;
   round_number: number;
   status: string;
+  user_id: string;
   player_name: string;
   points: number;
+};
+
+type RoundBetRow = {
+  id: string;
+  round_id: string;
+  user_id: string; // bettor
+  pick_user_id: string;
+  amount: number;
+  odds_snapshot: number;
+  settled: boolean;
+  won: boolean | null;
+  payout: number;
 };
 
 export default function BetPage() {
@@ -35,6 +48,9 @@ export default function BetPage() {
   const [amount, setAmount] = useState<number>(5);
   const [status, setStatus] = useState<string | null>(null);
   const [roundResults, setRoundResults] = useState<RoundResultRow[]>([]);
+  const [roundBets, setRoundBets] = useState<RoundBetRow[]>([]);
+  const [tableRounds, setTableRounds] = useState<{ id: string; round_number: number; status: string }[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -64,6 +80,12 @@ export default function BetPage() {
         return;
       }
       setCompetition({ id: comp.id, name: comp.name });
+
+      const { data: adminFlag, error: adminErr } = await supabase.rpc("is_competition_admin", {
+        p_competition_id: comp.id,
+      });
+      if (adminErr) throw adminErr;
+      setIsAdmin(Boolean(adminFlag));
 
       const { data: openRounds, error: roundErr } = await supabase
         .from("rounds")
@@ -119,32 +141,58 @@ export default function BetPage() {
         .select("id,round_number,status")
         .eq("competition_id", comp.id)
         .order("round_number", { ascending: false })
-        .limit(20);
+        .limit(12);
       if (roundsListErr) throw roundsListErr;
       const roundList = roundsData ?? [];
+      setTableRounds(roundList as any);
       const roundMap = new Map(
         roundList.map((r: any) => [String(r.id), { n: Number(r.round_number), s: String(r.status) }]),
       );
 
-      if (roundList.length > 0) {
-        const ids = roundList.map((r: any) => String(r.id));
+      const ids = roundList.map((r: any) => String(r.id));
+      if (ids.length > 0) {
+        const nameMap = new Map(candidates.map((p) => [p.player_id, p.player_name]));
+
         const { data: resultRows, error: rrErr } = await supabase
           .from("round_results")
           .select("round_id,user_id,points")
           .in("round_id", ids);
         if (rrErr) throw rrErr;
-        const nameMap = new Map(candidates.map((p) => [p.player_id, p.player_name]));
+
         const flat = (resultRows ?? []).map((rr: any) => ({
           round_id: String(rr.round_id),
           round_number: roundMap.get(String(rr.round_id))?.n ?? 0,
           status: roundMap.get(String(rr.round_id))?.s ?? "unknown",
+          user_id: String(rr.user_id),
           player_name: nameMap.get(String(rr.user_id)) ?? "Unknown",
           points: Number(rr.points ?? 0),
         }));
         flat.sort((a, b) => b.round_number - a.round_number || b.points - a.points);
         setRoundResults(flat);
+
+        const { data: betsRows, error: betsAllErr } = await supabase
+          .from("bets")
+          .select("id,round_id,user_id,pick_user_id,amount,odds_snapshot,settled,won,payout")
+          .in("round_id", ids);
+        if (betsAllErr) throw betsAllErr;
+
+        setRoundBets(
+          (betsRows ?? []).map((b: any) => ({
+            id: String(b.id),
+            round_id: String(b.round_id),
+            user_id: String(b.user_id),
+            pick_user_id: String(b.pick_user_id),
+            amount: Number(b.amount ?? 0),
+            odds_snapshot: Number(b.odds_snapshot ?? 0),
+            settled: Boolean(b.settled),
+            won: b.won === null || b.won === undefined ? null : Boolean(b.won),
+            payout: Number(b.payout ?? 0),
+          })),
+        );
       } else {
         setRoundResults([]);
+        setRoundBets([]);
+        setTableRounds([]);
       }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Failed to load betting data");
@@ -180,6 +228,67 @@ export default function BetPage() {
     }
   }
 
+  async function onDeleteRound(roundId: string, roundNumber?: number) {
+    if (!isAdmin) return;
+    const ok = window.confirm(
+      `Delete round${roundNumber ? ` #${roundNumber}` : ""}?\nThis removes results and wagers for that round (and refunds stakes).`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase.rpc("delete_round", { p_round_id: roundId });
+      if (error) throw error;
+      setStatus("Round deleted.");
+      await load();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Failed to delete round");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const roundsAsc = useMemo(() => {
+    return [...tableRounds].sort((a, b) => a.round_number - b.round_number);
+  }, [tableRounds]);
+
+  const betsUsedThisRound = useMemo(() => bets.length, [bets]);
+
+  const pointsByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of roundResults) {
+      m.set(`${r.round_id}::${r.user_id}`, r.points);
+    }
+    return m;
+  }, [roundResults]);
+
+  const betsAggByKey = useMemo(() => {
+    // key: `${bettorId}::${roundId}`
+    const m = new Map<
+      string,
+      {
+        stake: number;
+        payout: number;
+        winCount: number;
+        loseCount: number;
+        hasAny: boolean;
+      }
+    >();
+    for (const b of roundBets) {
+      const key = `${b.user_id}::${b.round_id}`;
+      const cur = m.get(key) ?? { stake: 0, payout: 0, winCount: 0, loseCount: 0, hasAny: false };
+      cur.hasAny = true;
+      cur.stake += b.amount;
+      if (b.settled && b.won) cur.winCount += 1;
+      if (b.settled && b.won === false) cur.loseCount += 1;
+      cur.payout += b.settled && b.won ? b.payout : 0;
+      m.set(key, cur);
+    }
+    return m;
+  }, [roundBets]);
+
+  const wagerMax = Math.max(0, Number(balance.toFixed(2)));
+
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Wager Board</h1>
@@ -210,16 +319,32 @@ export default function BetPage() {
                 </label>
                 <label>
                   Wager amount
+                </label>
+                <div className="row" style={{ gap: 12 }}>
                   <input
                     type="number"
                     min={0.01}
                     step={0.01}
                     value={amount}
                     onChange={(e) => setAmount(Number(e.target.value))}
+                    style={{ flex: "0 0 160px" }}
                   />
-                </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={wagerMax > 0 ? wagerMax : 0.01}
+                    step={1}
+                    value={Math.min(amount, wagerMax)}
+                    onChange={(e) => setAmount(Number(e.target.value))}
+                    style={{ flex: "1 1 auto" }}
+                    disabled={!round}
+                  />
+                </div>
                 <div className="muted" style={{ fontSize: 12 }}>
                   Potential payout: {(amount * selectedOdds).toFixed(2)} dubloons
+                </div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Bets used this round: {betsUsedThisRound}/3
                 </div>
                 <button disabled={busy} onClick={onPlaceBet}>
                   {busy ? "Placing..." : "Place wager"}
@@ -266,54 +391,101 @@ export default function BetPage() {
           </div>
           </div>
 
-          <div className="card">
-            <div className="muted">Round results log</div>
-            {roundResults.length === 0 ? (
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="muted">Round results + wagers</div>
+            {roundsAsc.length === 0 ? (
               <div className="muted" style={{ marginTop: 10 }}>
-                No round results recorded yet.
+                No rounds recorded yet.
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                {Array.from(new Set(roundResults.map((r) => r.round_id))).map((rid) => {
-                  const rows = roundResults
-                    .filter((r) => r.round_id === rid)
-                    .sort((a, b) => b.points - a.points || a.player_name.localeCompare(b.player_name));
-                  const head = rows[0];
-                  return (
-                    <div
-                      key={rid}
-                      style={{
-                        border: "1px solid rgba(85, 74, 66, 0.18)",
-                        borderRadius: 10,
-                        padding: 10,
-                        background: "rgba(255,255,255,0.45)",
-                      }}
-                    >
-                      <div className="row" style={{ justifyContent: "space-between" }}>
-                        <div>
-                          <strong>Round #{head.round_number}</strong>
-                        </div>
-                        <div className="badge">{head.status}</div>
-                      </div>
-                      <table style={{ marginTop: 8 }}>
-                        <thead>
-                          <tr>
-                            <th>Player</th>
-                            <th style={{ width: 120 }}>Points</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((r) => (
-                            <tr key={`${r.round_id}-${r.player_name}`}>
-                              <td>{r.player_name}</td>
-                              <td>{r.points}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })}
+              <div style={{ overflowX: "auto", marginTop: 10 }}>
+                <table className="matrix-table">
+                  <thead>
+                    <tr>
+                      <th className="matrix-sticky-col">Player</th>
+                      {roundsAsc.map((r) => (
+                        <th key={r.id} className="matrix-round-col">
+                          <div style={{ fontWeight: 700 }}>Round #{r.round_number}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {r.status}
+                          </div>
+                          {isAdmin ? (
+                            <button
+                              disabled={busy}
+                              style={{ marginTop: 8, padding: "6px 10px", borderRadius: 10 }}
+                              onClick={() => onDeleteRound(r.id, r.round_number)}
+                            >
+                              Delete
+                            </button>
+                          ) : null}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {players.map((p) => (
+                      <tr key={p.player_id}>
+                        <td className="matrix-sticky-col">
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.25)" }}>
+                              <div style={{ padding: 7, fontSize: 12, fontWeight: 700, textAlign: "center" }}>
+                                {p.player_name
+                                  .trim()
+                                  .split(/\s+/)
+                                  .slice(0, 2)
+                                  .map((s) => s[0]?.toUpperCase() ?? "")
+                                  .join("")}
+                              </div>
+                            </div>
+                            <div>{p.player_name}</div>
+                          </div>
+                        </td>
+                        {roundsAsc.map((r) => {
+                          const points = pointsByKey.get(`${r.id}::${p.player_id}`);
+                          const betsKey = `${p.player_id}::${r.id}`;
+                          const agg = betsAggByKey.get(betsKey);
+                          const stake = agg?.stake ?? 0;
+                          const payout = agg?.payout ?? 0;
+                          const winCount = agg?.winCount ?? 0;
+                          const loseCount = agg?.loseCount ?? 0;
+
+                          let outcome = "—";
+                          let outcomeStyle: any;
+
+                          if (!agg?.hasAny) {
+                            outcome = "—";
+                          } else if (r.status !== "settled") {
+                            outcome = stake > 0 ? "Pending" : "—";
+                            outcomeStyle = { borderColor: "rgba(140,59,54,0.35)" };
+                          } else if (winCount > 0 && loseCount > 0) {
+                            outcome = `Mixed (+${payout.toFixed(2)})`;
+                            outcomeStyle = { borderColor: "rgba(196,164,90,0.35)" };
+                          } else if (winCount > 0) {
+                            outcome = `Win (+${payout.toFixed(2)})`;
+                            outcomeStyle = { borderColor: "rgba(76,175,80,0.5)" };
+                          } else if (loseCount > 0) {
+                            outcome = "Lose";
+                            outcomeStyle = { borderColor: "rgba(200,60,60,0.5)" };
+                          }
+
+                          return (
+                            <td key={`${p.player_id}-${r.id}`} className="matrix-cell">
+                              <div style={{ fontWeight: 800 }}>
+                                {points !== undefined ? points : "—"}
+                              </div>
+                              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                                wager: {stake > 0 ? `${stake.toFixed(2)} db` : "—"}
+                              </div>
+                              <div className="badge" style={{ marginTop: 6, ...outcomeStyle }}>
+                                {outcome}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
