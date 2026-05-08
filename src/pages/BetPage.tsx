@@ -293,34 +293,34 @@ export default function BetPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>Wager Board</h1>
-      {loading ? <div className="muted">Loading...</div> : null}
+        <h1 style={{ marginTop: 0 }}>Vedonlyöntilautapeli</h1>
+      {loading ? <div className="muted">Ladataan...</div> : null}
       {status ? <div className="card muted">{status}</div> : null}
 
       {!loading && competition ? (
         <>
           <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", alignItems: "start" }}>
             <div className="card" style={{ flex: "1 1 420px" }}>
-            <div className="muted">Competition: {competition.name}</div>
-            <div className="muted">Current round: {round ? `#${round.number} (open)` : "No open round"}</div>
+            <div className="muted">Kilpailu: {competition.name}</div>
+            <div className="muted">Nykyinen kierros: {round ? `#${round.number} (auki)` : "Ei avointa kierrosta"}</div>
             <div style={{ marginTop: 10 }} className="badge">
-              Purse: {balance.toFixed(2)} dubloons
+              Potti: {balance.toFixed(2)} dublonia
             </div>
 
             {round ? (
               <div className="field">
                 <label>
-                  Pick winner
+                  Valitse voittaja
                   <select value={pickUserId} onChange={(e) => setPickUserId(e.target.value)} style={{ marginTop: 6 }}>
                     {players.map((p) => (
                       <option key={p.player_id} value={p.player_id}>
-                        {p.player_name} (odds {p.current_odds.toFixed(2)}, bal {p.balance.toFixed(2)})
+                        {p.player_name} (kertoimet {p.current_odds.toFixed(2)}, saldo {p.balance.toFixed(2)})
                       </option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  Wager amount
+                  Vedon määrä
                 </label>
                 <div className="row" style={{ gap: 12 }}>
                   <input
@@ -343,39 +343,39 @@ export default function BetPage() {
                   />
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>
-                  Potential payout: {(amount * selectedOdds).toFixed(2)} dubloons
+                  Mahdollinen voitto: {(amount * selectedOdds).toFixed(2)} dublonia
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>
-                  Bets used this round: {betsUsedThisRound}/3
+                  Vedot käytetty tällä kierroksella: {betsUsedThisRound}/3
                 </div>
                 <button disabled={busy} onClick={onPlaceBet}>
-                  {busy ? "Placing..." : "Place wager"}
+                  {busy ? "Asetetaan..." : "Aseta veto"}
                 </button>
                 <div className="muted" style={{ fontSize: 12 }}>
-                  Multiple smaller bets per round are allowed.
+                  Useiden pienempien vetojen asettaminen kierroksella on sallittua.
                 </div>
               </div>
             ) : (
               <div className="muted" style={{ marginTop: 10 }}>
-                No open round yet. Wait for admin to open one.
+                Ei avointa kierrosta vielä. Odota, että ylläpitäjä avaa sellaisen.
               </div>
             )}
           </div>
 
           <div className="card" style={{ flex: "1 1 360px" }}>
-            <div className="muted">Your bets this round</div>
+            <div className="muted">Sinun vedot tällä kierroksella</div>
             {bets.length === 0 ? (
               <div className="muted" style={{ marginTop: 10 }}>
-                No wagers yet.
+                Ei vielä vedoja.
               </div>
             ) : (
               <table>
                 <thead>
                   <tr>
-                    <th>Pick</th>
-                    <th>Amount</th>
-                    <th>Odds</th>
-                    <th>Payout</th>
+                    <th>Valinta</th>
+                    <th>Määrä</th>
+                    <th>Kertoimet</th>
+                    <th>Voitto</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -394,20 +394,20 @@ export default function BetPage() {
           </div>
 
           <div className="card" style={{ marginTop: 12 }}>
-            <div className="muted">Round results + wagers</div>
+            <div className="muted">Kierroksen tulokset + vedot</div>
             {roundsAsc.length === 0 ? (
               <div className="muted" style={{ marginTop: 10 }}>
-                No rounds recorded yet.
+                Ei kierroksia tallennettu vielä.
               </div>
             ) : (
               <div style={{ overflowX: "auto", marginTop: 10 }}>
                 <table className="matrix-table">
                   <thead>
                     <tr>
-                      <th className="matrix-sticky-col">Player</th>
+                      <th className="matrix-sticky-col">Pelaaja</th>
                       {roundsAsc.map((r) => (
                         <th key={r.id} className="matrix-round-col">
-                          <div style={{ fontWeight: 700 }}>Round #{r.round_number}</div>
+                          <div style={{ fontWeight: 700 }}>Kierros #{r.round_number}</div>
                           <div className="muted" style={{ fontSize: 12 }}>
                             {r.status}
                           </div>
@@ -417,7 +417,7 @@ export default function BetPage() {
                               style={{ marginTop: 8, padding: "6px 10px", borderRadius: 10 }}
                               onClick={() => onDeleteRound(r.id, r.round_number)}
                             >
-                              Delete
+                              Poista
                             </button>
                           ) : null}
                         </th>

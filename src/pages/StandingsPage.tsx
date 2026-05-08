@@ -186,14 +186,14 @@ export default function StandingsPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>Standings</h1>
-      {competitionName ? <div className="muted">Competition: {competitionName}</div> : null}
+      <h1 style={{ marginTop: 0 }}>Sijoitukset</h1>
+      {competitionName ? <div className="muted">Kilpailu: {competitionName}</div> : null}
 
-      {loading ? <div className="muted">Loading...</div> : null}
-      {error ? <div className="muted">Error: {error}</div> : null}
+      {loading ? <div className="muted">Ladataan...</div> : null}
+      {error ? <div className="muted">Virhe: {error}</div> : null}
 
       {!loading && !competitionName ? (
-        <div className="card muted">No active competition found yet.</div>
+        <div className="card muted">Aktiivista kilpailua ei löytynyt vielä.</div>
       ) : null}
 
       {!loading && competitionName ? (
@@ -206,14 +206,14 @@ export default function StandingsPage() {
             <>
               <div className="card leaderboard-surface podium-stage" style={{ marginTop: 12 }}>
                 <div className="muted" style={{ marginBottom: 10 }}>
-                  Leaderboard
+                  Paremmuussijoitus
                 </div>
 
                 <div className="podium-wrap">
                   {[
-                    { label: "2nd", row: podium.second, tall: false, rankClass: "podium-rank-2" },
-                    { label: "1st", row: podium.first, tall: true, rankClass: "podium-rank-1" },
-                    { label: "3rd", row: podium.third, tall: false, rankClass: "podium-rank-3" },
+                    { label: "2.", row: podium.second, tall: false, rankClass: "podium-rank-2" },
+                    { label: "1.", row: podium.first, tall: true, rankClass: "podium-rank-1" },
+                    { label: "3.", row: podium.third, tall: false, rankClass: "podium-rank-3" },
                   ].map((slot) => (
                     <div
                       key={slot.label}
@@ -230,7 +230,7 @@ export default function StandingsPage() {
                         </div>
                         {slot.row ? (
                           <div className="muted" style={{ fontSize: 12 }}>
-                            Rank #{slot.row.rank}
+                            Sijoitus #{slot.row.rank}
                           </div>
                         ) : null}
                       </div>
@@ -243,10 +243,10 @@ export default function StandingsPage() {
                               {slot.row.player_name}
                             </div>
                             <div className="statline">
-                              <span className="badge">best {slot.row.best_round_points}</span>
-                              <span className="badge">avg {slot.row.avg_round_points.toFixed(1)}</span>
-                              <span className="badge">odds {slot.row.current_odds.toFixed(2)}</span>
-                              <span className="badge">best payout {slot.row.best_payout.toFixed(2)} db</span>
+                              <span className="badge">paras {slot.row.best_round_points}</span>
+                              <span className="badge">ka {slot.row.avg_round_points.toFixed(1)}</span>
+                              <span className="badge">kertoimet {slot.row.current_odds.toFixed(2)}</span>
+                              <span className="badge">paras voitto {slot.row.best_payout.toFixed(2)} db</span>
                             </div>
                           </div>
                         </div>
@@ -265,7 +265,7 @@ export default function StandingsPage() {
                             {slot.row.total_points} pts
                           </div>
                           <div className="muted" style={{ fontSize: 12 }}>
-                            {slot.row.balance.toFixed(2)} db left
+                            {slot.row.balance.toFixed(2)} db jäljellä
                           </div>
                         </div>
                       ) : null}
@@ -279,7 +279,7 @@ export default function StandingsPage() {
               </div>
 
               <div className="card leaderboard-surface" style={{ marginTop: 12 }}>
-                <div className="muted">All players</div>
+                <div className="muted">Kaikki pelaajat</div>
                 <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                   {rankedRows.map((r) => (
                     <div
@@ -309,9 +309,9 @@ export default function StandingsPage() {
                           {r.player_name}
                         </div>
                         <div className="muted" style={{ fontSize: 12 }}>
-                          <span className="badge">best {r.best_round_points}</span>{" "}
-                          <span className="badge">avg {r.avg_round_points.toFixed(1)}</span>{" "}
-                          <span className="badge">odds {r.current_odds.toFixed(2)}</span>{" "}
+                          <span className="badge">paras {r.best_round_points}</span>{" "}
+                          <span className="badge">ka {r.avg_round_points.toFixed(1)}</span>{" "}
+                          <span className="badge">kertoimet {r.current_odds.toFixed(2)}</span>{" "}
                           <span className="badge">{r.balance.toFixed(2)} db</span>{" "}
                         </div>
                       </div>
@@ -325,7 +325,7 @@ export default function StandingsPage() {
                         {r.total_points} pts
                       </div>
                       <div className="muted" style={{ textAlign: "right" }}>
-                        best payout {r.best_payout.toFixed(2)} db
+                        paras voitto {r.best_payout.toFixed(2)} db
                       </div>
                     </div>
                   ))}

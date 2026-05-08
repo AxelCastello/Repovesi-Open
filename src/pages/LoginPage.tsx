@@ -56,26 +56,26 @@ export default function LoginPage() {
 
   return (
     <div className="card">
-      <h1 style={{ marginTop: 0 }}>Sign in</h1>
+      <h1 style={{ marginTop: 0 }}>Kirjaudu sisään</h1>
       <div className="field">
         <label>
-          Username
+          Käyttäjänimi
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoCapitalize="words"
             spellCheck={false}
-            placeholder="Anton S"
+            placeholder="Matti M"
           />
         </label>
         <div className="row">
           <button disabled={busy || normalized.length < 3} onClick={onSignIn}>
-            {busy ? "Working..." : "Sign in"}
+            {busy ? "Ladataan..." : "Kirjaudu sisään"}
           </button>
         </div>
 
         <div className="muted" style={{ fontSize: 12 }}>
-          Enter the name that matches the whitelist. You do not need to enter a password.
+          Anna nimi, joka vastaa sallittujen pelaajien luetteloa. Salasanaa ei tarvitse antaa.
         </div>
         {status ? <div className="muted">{status}</div> : null}
       </div>

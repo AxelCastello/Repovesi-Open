@@ -403,9 +403,9 @@ export default function AdminPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>Admin</h1>
+      <h1 style={{ marginTop: 0 }}>Ylläpito</h1>
 
-      {loading ? <div className="muted">Loading...</div> : null}
+      {loading ? <div className="muted">Ladataan...</div> : null}
       {session ? (
         <div className="card muted" style={{ marginBottom: 12 }}>
           <div>
@@ -431,7 +431,7 @@ export default function AdminPage() {
 
         <div className="field">
           <label>
-            Manage competition
+            Hallitse kilpailua
             <select
               value={selectedCompetitionId ?? ""}
               onChange={(e) => setSelectedCompetitionId(e.target.value || null)}
@@ -455,14 +455,14 @@ export default function AdminPage() {
         ) : (
           <div className="row" style={{ marginTop: 10 }}>
             <button disabled={busy} onClick={onSetActive}>
-              {busy ? "Updating..." : "Make selected competition active"}
+              {busy ? "Päivitetään..." : "Tee valittu kilpailu aktiiviseksi"}
             </button>
           </div>
         )}
       </div>
 
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="muted">Create new competition</div>
+        <div className="muted">Luo uusi kilpailu</div>
         {!isAnyAdmin ? (
           <div className="muted" style={{ marginTop: 10 }}>
             You must be an admin to create competitions.
@@ -498,19 +498,19 @@ export default function AdminPage() {
 
       <div className="row">
         <div className="card" style={{ flex: "1 1 520px" }}>
-          <div className="muted">Whitelisted players</div>
+          <div className="muted">Hyväksytyt pelaajat</div>
 
           {players.length === 0 ? (
             <div className="muted" style={{ marginTop: 10 }}>
-              No players in the whitelist for this competition yet.
+              Ei pelaajia tämän kilpailun hyväksyttyjen luettelossa vielä.
             </div>
           ) : (
             <table>
               <thead>
                 <tr>
-                  <th>Player</th>
-                  <th style={{ width: 260 }}>User ID</th>
-                  <th style={{ width: 90 }}>Role</th>
+                  <th>Pelaaja</th>
+                  <th style={{ width: 260 }}>Käyttäjä ID</th>
+                  <th style={{ width: 90 }}>Rooli</th>
                   <th style={{ width: 120 }} />
                 </tr>
               </thead>
@@ -523,7 +523,7 @@ export default function AdminPage() {
                     <td>
                       {isAdmin ? (
                         <button disabled={busy} onClick={() => onRemovePlayer(p.user_id)}>
-                          Remove
+                          Poista
                         </button>
                       ) : null}
                     </td>
@@ -535,45 +535,44 @@ export default function AdminPage() {
         </div>
 
         <div className="card" style={{ flex: "1 1 360px" }}>
-          <div className="muted">Add player to whitelist</div>
+          <div className="muted">Lisää pelaaja hyväksyttyjen luetteloon</div>
 
           <div className="field">
             <label>
-              player name
+              pelaajan nimi
               <input
                 value={usernameToAdd}
                 onChange={(e) => setUsernameToAdd(e.target.value)}
-                placeholder="Anton S"
+                placeholder="Matti M"
               />
             </label>
 
             <label>
-              role
+              rooli
               <select
                 value={roleToAdd}
                 onChange={(e) => setRoleToAdd(e.target.value as "player" | "admin")}
                 style={{ marginTop: 6 }}
                 disabled={!isAdmin}
               >
-                <option value="player">player</option>
-                <option value="admin">admin</option>
+                <option value="player">pelaaja</option>
+                <option value="admin">ylläpitäjä</option>
               </select>
             </label>
 
             <button disabled={!isAdmin || busy} onClick={onAddPlayer}>
-              {busy ? "Working..." : "Add"}
+              {busy ? "Työskennellään..." : "Lisää"}
             </button>
 
             <div className="muted" style={{ fontSize: 12 }}>
-              Add by name now. The user is activated automatically when they sign up / log in for
-              the first time.
+              Lisää nimen mukaan. Käyttäjä aktivoidaan automaattisesti, kun hän rekisteröityy / kirjautuu sisään ensimmäisen kerran.
             </div>
           </div>
         </div>
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <div className="muted">Rounds and result settlement</div>
+        <div className="muted">Kierrokset ja tulosten ratkaisu</div>
         {!isAdmin ? (
           <div className="muted" style={{ marginTop: 10 }}>
             Admin only.
@@ -582,18 +581,18 @@ export default function AdminPage() {
           <div className="field">
             <div className="row">
               <button disabled={busy || !selectedCompetitionId} onClick={onCreateRound}>
-                {busy ? "Working..." : "Open next round"}
+                {busy ? "Työskennellään..." : "Avaa seuraava kierros"}
               </button>
               <div className="muted">
-                Open round:{" "}
+                Avoin kierros:{" "}
                 {openRoundId
                   ? `#${rounds.find((r) => r.id === openRoundId)?.round_number ?? "?"}`
-                  : "none"}
+                  : "ei yhtään"}
               </div>
             </div>
 
             <div className="muted" style={{ fontSize: 12 }}>
-              Enter points for this round and settle bets.
+              Syötä tämän kierroksen pisteet ja ratkaise vedot.
             </div>
 
             <div className="row" style={{ gap: 10, marginTop: 8 }}>
@@ -606,10 +605,10 @@ export default function AdminPage() {
                 style={{ flex: "0 0 140px" }}
               />
               <button disabled={busy || !players.length} onClick={() => applyBulkPoints(bulkPoints)}>
-                Set all
+                Aseta kaikille
               </button>
               <button disabled={busy || !players.length} onClick={() => applyBulkPoints(0)}>
-                Zero all
+                Nollaa kaikki
               </button>
             </div>
 
@@ -621,7 +620,7 @@ export default function AdminPage() {
                     type="number"
                     min={0}
                     step={1}
-                    value={roundPoints[p.user_id] ?? 0}
+                    value={roundPoints[p.user_id] ?? ""}
                     onChange={(e) =>
                       setRoundPoints((prev) => ({
                         ...prev,
@@ -634,19 +633,19 @@ export default function AdminPage() {
             </div>
 
             <button disabled={busy || !openRoundId} onClick={onSubmitRoundResults}>
-              {busy ? "Settling..." : "Submit round results and settle"}
+              {busy ? "Ratkaistaan..." : "Lähetä kierroksen tulokset ja ratkaise"}
             </button>
 
             <div className="muted" style={{ fontSize: 12 }}>
-              Multiple player bets are allowed per round; this action closes and settles the open round.
+              Useiden pelaajien vedot kierrokselta ovat sallittuja; tämä toiminto sulkee ja ratkaisee avoimen kierroksen.
             </div>
 
             <div className="muted" style={{ marginTop: 8 }}>
-              Recent rounds
+              Viimeiset kierrokset
             </div>
             <div style={{ display: "grid", gap: 8 }}>
               {rounds.length === 0 ? (
-                <div className="muted">No rounds yet.</div>
+                <div className="muted">Ei kierroksia vielä.</div>
               ) : (
                 rounds.map((r) => (
                   <div
@@ -663,11 +662,11 @@ export default function AdminPage() {
                     }}
                   >
                     <div>
-                      Round #{r.round_number}
+                      Kierros #{r.round_number}
                     </div>
                     <div className="badge">{r.status}</div>
                     <button disabled={busy} onClick={() => onDeleteRound(r.id, r.round_number)}>
-                      Delete round
+                      Poista kierros
                     </button>
                   </div>
                 ))
