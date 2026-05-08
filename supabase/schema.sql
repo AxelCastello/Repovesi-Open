@@ -895,6 +895,62 @@ begin
   -- Remove round (cascades to round_results + bets).
   delete from public.rounds
   where id = p_round_id;
+
+  -- Recalculate odds based on remaining rounds' points.
+  declare
+    v_max_total integer;
+  begin
+    select coalesce(max(t.total_points), 0) into v_max_total
+    from (
+      select
+        cp.user_id,
+        coalesce(sum(rr.points), 0)::int as total_points
+      from public.competition_players cp
+      left join public.rounds r on r.competition_id = cp.competition_id
+      left join public.round_results rr on rr.round_id = r.id and rr.user_id = cp.user_id
+      where cp.competition_id = v_comp
+      group by cp.user_id
+    ) t;
+
+    insert into public.competition_odds (competition_id, user_id, current_odds, updated_at)
+    select
+      v_comp,
+      t.user_id,
+      least(
+        12.00,
+        greatest(
+          1.50,
+          round(
+            (
+              1.50
+              + 10.50 * power(
+                case
+                  when v_max_total = 0 then 1.0
+                  else greatest(0.0, least(1.0, 1.0 - (t.total_points::numeric / v_max_total)))
+                end,
+                1.35
+              )
+            )
+            + ((abs(hashtext(t.user_id::text)) % 20) / 100.0),
+            2
+          )
+        )
+      )::numeric(6,2) as new_odds,
+      now()
+    from (
+      select
+        cp.user_id,
+        coalesce(sum(rr.points), 0)::int as total_points
+      from public.competition_players cp
+      left join public.rounds r on r.competition_id = cp.competition_id
+      left join public.round_results rr on rr.round_id = r.id and rr.user_id = cp.user_id
+      where cp.competition_id = v_comp
+      group by cp.user_id
+    ) t
+    on conflict (competition_id, user_id) do update
+      set current_odds = excluded.current_odds,
+          updated_at = excluded.updated_at;
+  end;
 end;
 $$;
 
