@@ -185,13 +185,20 @@ select
   cp.user_id as player_id,
   coalesce(u.raw_user_meta_data->>'full_name', u.email) as player_name,
   coalesce(sum(rr.points), 0)::int as total_points,
-  count(rr.round_id)::int as rounds_count,
+  count(distinct rr.round_id)::int as rounds_count,
   max(r.created_at) as last_submission_at,
   coalesce(max(rr.points), 0)::int as best_round_points,
   coalesce(avg(rr.points), 0)::numeric(10,2) as avg_round_points,
   coalesce(o.current_odds, public.seed_initial_odds(cp.competition_id, cp.user_id))::numeric(6,2) as current_odds,
   coalesce(w.balance, 100.00)::numeric(12,2) as balance,
-  coalesce(max(b.payout), 0)::numeric(12,2) as best_payout
+  (
+    select coalesce(max(payout), 0)::numeric(12,2)
+    from public.bets
+    where competition_id = cp.competition_id
+      and user_id = cp.user_id
+      and settled = true
+      and won = true
+  )::numeric(12,2) as best_payout
 from public.competition_players cp
 join public.competitions c on c.id = cp.competition_id
 join auth.users u on u.id = cp.user_id
@@ -200,11 +207,6 @@ left join public.round_results rr
 left join public.rounds r
   on r.id = rr.round_id
  and r.competition_id = cp.competition_id
-left join public.bets b
-  on b.competition_id = cp.competition_id
- and b.user_id = cp.user_id
- and b.settled = true
- and b.won = true
 left join public.competition_odds o
   on o.competition_id = cp.competition_id
  and o.user_id = cp.user_id
