@@ -176,16 +176,6 @@ export default function StandingsPage() {
     });
   }, [rows]);
 
-  const podium = useMemo(() => {
-    const top = rankedRows.slice(0, 3);
-    // Visual order: 2nd, 1st, 3rd.
-    return {
-      first: top.find((r) => r.rank === 1) ?? top[0] ?? null,
-      second: top.find((r) => r.rank === 2) ?? top[1] ?? null,
-      third: top.find((r) => r.rank === 3) ?? top[2] ?? null,
-    };
-  }, [rankedRows]);
-
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Sijoitukset</h1>
@@ -206,81 +196,6 @@ export default function StandingsPage() {
             </div>
           ) : (
             <>
-              <div className="card leaderboard-surface podium-stage" style={{ marginTop: 12 }}>
-                <div className="muted" style={{ marginBottom: 10 }}>
-                  Paremmuussijoitus
-                </div>
-
-                <div className="podium-wrap">
-                  {[
-                    { label: "2.", row: podium.second, tall: false, rankClass: "podium-rank-2" },
-                    { label: "1.", row: podium.first, tall: true, rankClass: "podium-rank-1" },
-                    { label: "3.", row: podium.third, tall: false, rankClass: "podium-rank-3" },
-                  ].map((slot) => (
-                    <div
-                      key={slot.label}
-                      className={`podium-card ${slot.tall ? "tall" : "short"} ${slot.rankClass}`}
-                    >
-                      <div className="row" style={{ justifyContent: "space-between" }}>
-                        <div
-                          style={{
-                            fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                            color: "rgba(74, 69, 64, 0.88)",
-                          }}
-                        >
-                          {slot.label}
-                        </div>
-                        {slot.row ? (
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            Sijoitus #{slot.row.rank}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {slot.row ? (
-                        <div className="row" style={{ alignItems: "center", gap: 12 }}>
-                          <ShieldAvatar name={slot.row.player_name} size={slot.tall ? 64 : 54} />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {slot.row.player_name}
-                            </div>
-                            <div className="statline">
-                              <span className="badge">paras {slot.row.best_round_points}</span>
-                              <span className="badge">ka {slot.row.avg_round_points.toFixed(1)}</span>
-                              <span className="badge">taito {slot.row.skill_level.toFixed(2)}</span>
-                              <span className="badge">kertoimet {slot.row.current_odds.toFixed(2)}</span>
-                              <span className="badge">paras voitto {slot.row.best_payout.toFixed(2)} db</span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="muted">—</div>
-                      )}
-
-                      {slot.row ? (
-                        <div className="row" style={{ justifyContent: "space-between" }}>
-                          <div
-                            style={{
-                              fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                              color: "rgba(74, 69, 64, 0.9)",
-                            }}
-                          >
-                            {slot.row.total_points} pts
-                          </div>
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            {slot.row.balance.toFixed(2)} db jäljellä
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="podium-logo-wrap" aria-hidden="true">
-                        <img src="/gamlakarleby-crest.png" alt="" className="podium-logo" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="card leaderboard-surface" style={{ marginTop: 12, position: "relative", overflow: "hidden" }}>
                 <div
                   style={{
@@ -299,7 +214,7 @@ export default function StandingsPage() {
 
                 <div style={{ position: "relative", zIndex: 1 }}>
                   <div className="muted" style={{ marginBottom: 16 }}>
-                    Kaikki pelaajat
+                    Paremmuussijoitus
                   </div>
                   <div
                     style={{
@@ -407,6 +322,61 @@ export default function StandingsPage() {
                       );
                     })}
                   </div>
+                </div>
+              </div>
+
+              <div className="card leaderboard-surface" style={{ marginTop: 12 }}>
+                <div className="muted">Kaikki pelaajat - Yksityiskohdat</div>
+                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                  {rankedRows.map((r) => (
+                    <div
+                      key={`${r.player_id}-${r.rank}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "60px 56px 1fr 120px 120px",
+                        gap: 10,
+                        alignItems: "center",
+                        padding: "10px 10px",
+                        border: "1px solid var(--line)",
+                        borderRadius: 12,
+                        background: "rgba(255,255,255,0.30)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                          color: "rgba(74, 69, 64, 0.9)",
+                        }}
+                      >
+                        #{r.rank}
+                      </div>
+                      <ShieldAvatar name={r.player_name} size={44} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {r.player_name}
+                        </div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          <span className="badge">paras {r.best_round_points}</span>{" "}
+                          <span className="badge">ka {r.avg_round_points.toFixed(1)}</span>{" "}
+                          <span className="badge">taito {r.skill_level.toFixed(2)}</span>{" "}
+                          <span className="badge">kertoimet {r.current_odds.toFixed(2)}</span>{" "}
+                          <span className="badge">{r.balance.toFixed(2)} db</span>{" "}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                          color: "rgba(74, 69, 64, 0.9)",
+                          textAlign: "right",
+                        }}
+                      >
+                        {r.total_points} pts
+                      </div>
+                      <div className="muted" style={{ textAlign: "right" }}>
+                        paras voitto {r.best_payout.toFixed(2)} db
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </>
