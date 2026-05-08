@@ -103,7 +103,100 @@ returns numeric
 language sql
 immutable
 as $$
-  select round((5.00 + (abs(hashtext(p_user_id::text)) % 100) / 100.0)::numeric, 2);
+  select round((7.00 + (abs(hashtext(p_user_id::text)) % 100) / 100.0)::numeric, 2);
+$$;
+
+-- Add skill_level column to competition_players
+alter table public.competition_players
+add column if not exists skill_level numeric(4,2) default null;
+
+-- Function to assign random skill levels (7.00-7.99) to players without them
+create or replace function public.assign_skill_levels(p_competition_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.competition_players
+  set skill_level = round((7.00 + (abs(hashtext(user_id::text)) % 100) / 100.0)::numeric, 2)
+  where competition_id = p_competition_id
+    and skill_level is null;
+end;
+$$;
+
+-- Function to calculate skill level based on per-round performance
+create or replace function public.calculate_skill_level(p_competition_id uuid, p_user_id uuid)
+returns numeric
+language plpgsql
+stable
+as $$
+declare
+  v_skill numeric;
+  v_skill_delta numeric;
+begin
+  -- Start with base skill of 7.0
+  v_skill := 7.0;
+  
+  -- For each round, add or subtract based on points earned
+  -- 6+ points: +0.05 per point (10 pts = +0.5, 20 pts = +1.0, etc)
+  -- 5 or less: -0.3 per round
+  select coalesce(
+    sum(case
+      when points >= 6 then (points::numeric / 10.0 * 0.5)
+      when points <= 5 then -0.3
+      else 0
+    end),
+    0
+  ) into v_skill_delta
+  from public.round_results rr
+  join public.rounds r on r.id = rr.round_id
+  where r.competition_id = p_competition_id
+    and rr.user_id = p_user_id;
+  
+  v_skill := v_skill + v_skill_delta;
+  
+  -- Cap at 10.0 max and 5.0 min
+  return round(least(10.0, greatest(5.0, v_skill)), 2);
+end;
+$$;
+
+-- Function to calculate odds based on skill levels
+create or replace function public.calculate_skill_based_odds(p_competition_id uuid, p_user_id uuid)
+returns numeric
+language plpgsql
+stable
+as $$
+declare
+  v_skill numeric;
+  v_avg_skill numeric;
+  v_odds numeric;
+begin
+  -- Calculate skill level based on accumulated points
+  select public.calculate_skill_level(p_competition_id, p_user_id) into v_skill;
+
+  if v_skill is null then
+    return 5.00; -- fallback
+  end if;
+
+  -- Calculate average skill level of all players in competition
+  select avg(public.calculate_skill_level(p_competition_id, cp.user_id)) into v_avg_skill
+  from public.competition_players cp
+  where cp.competition_id = p_competition_id;
+
+  if v_avg_skill is null or v_avg_skill = 0 then
+    return 5.00; -- fallback
+  end if;
+
+  -- Calculate odds: 1 / ((skill_level/100) / (avg_skill/100)) = avg_skill / skill_level
+  v_odds := v_avg_skill / v_skill;
+
+  -- Add small deterministic jitter to avoid identical odds
+  v_odds := v_odds + ((abs(hashtext(p_user_id::text)) % 20) / 100.0);
+
+  -- Clamp between reasonable bounds
+  return least(12.00, greatest(1.50, round(v_odds, 2)));
+end;
 $$;
 
 -- When a player is whitelisted, create their wallet + initial odds.
@@ -119,7 +212,7 @@ begin
   on conflict (competition_id, user_id) do nothing;
 
   insert into public.competition_odds (competition_id, user_id, current_odds)
-  values (new.competition_id, new.user_id, public.seed_initial_odds(new.competition_id, new.user_id))
+  values (new.competition_id, new.user_id, public.calculate_skill_based_odds(new.competition_id, new.user_id))
   on conflict (competition_id, user_id) do nothing;
 
   return new;
@@ -189,7 +282,8 @@ select
   max(r.created_at) as last_submission_at,
   coalesce(max(rr.points), 0)::int as best_round_points,
   coalesce(avg(rr.points), 0)::numeric(10,2) as avg_round_points,
-  coalesce(o.current_odds, public.seed_initial_odds(cp.competition_id, cp.user_id))::numeric(6,2) as current_odds,
+  public.calculate_skill_level(cp.competition_id, cp.user_id)::numeric(4,2) as skill_level,
+  coalesce(o.current_odds, public.calculate_skill_based_odds(cp.competition_id, cp.user_id))::numeric(6,2) as current_odds,
   coalesce(w.balance, 100.00)::numeric(12,2) as balance,
   (
     select coalesce(max(payout), 0)::numeric(12,2)
@@ -642,11 +736,11 @@ begin
   on conflict (competition_id, user_id) do nothing;
 
   insert into public.competition_odds (competition_id, user_id, current_odds)
-  values (v_comp, auth.uid(), public.seed_initial_odds(v_comp, auth.uid()))
+  values (v_comp, auth.uid(), public.calculate_skill_based_odds(v_comp, auth.uid()))
   on conflict (competition_id, user_id) do nothing;
 
   insert into public.competition_odds (competition_id, user_id, current_odds)
-  values (v_comp, p_pick_user_id, public.seed_initial_odds(v_comp, p_pick_user_id))
+  values (v_comp, p_pick_user_id, public.calculate_skill_based_odds(v_comp, p_pick_user_id))
   on conflict (competition_id, user_id) do nothing;
 
   -- pick must be a whitelisted player in this competition
@@ -677,7 +771,7 @@ begin
     and o.user_id = p_pick_user_id;
 
   if v_odds is null then
-    v_odds := public.seed_initial_odds(v_comp, p_pick_user_id);
+    v_odds := public.calculate_skill_based_odds(v_comp, p_pick_user_id);
   end if;
 
   -- Deduct immediately.
@@ -777,58 +871,15 @@ begin
   set status = 'settled'
   where id = p_round_id;
 
-  -- Update odds based on cumulative total points AFTER this round.
-  -- Stronger spread: leaders get lower odds, trailing players get higher odds.
-  select coalesce(max(t.total_points), 0) into v_max_total
-  from (
-    select
-      cp.user_id,
-      coalesce(sum(rr.points), 0)::int as total_points
-    from public.competition_players cp
-    left join public.rounds r on r.competition_id = cp.competition_id
-    left join public.round_results rr on rr.round_id = r.id and rr.user_id = cp.user_id
-    where cp.competition_id = v_comp
-    group by cp.user_id
-  ) t;
-
+  -- Update odds based on skill levels (not points)
   insert into public.competition_odds (competition_id, user_id, current_odds, updated_at)
   select
     v_comp,
-    t.user_id,
-    least(
-      12.00,
-      greatest(
-        1.50,
-        round(
-          (
-            -- Base curve from standings position:
-            -- best totals -> near 1.5x, lowest totals -> toward 12x.
-            1.50
-            + 10.50 * power(
-              case
-                when v_max_total = 0 then 1.0
-                else greatest(0.0, least(1.0, 1.0 - (t.total_points::numeric / v_max_total)))
-              end,
-              1.35
-            )
-          )
-          -- Small deterministic decimal jitter, so tied players don't have identical odds.
-          + ((abs(hashtext(t.user_id::text)) % 20) / 100.0),
-          2
-        )
-      )
-    )::numeric(6,2) as new_odds,
+    cp.user_id,
+    public.calculate_skill_based_odds(v_comp, cp.user_id),
     now()
-  from (
-    select
-      cp.user_id,
-      coalesce(sum(rr.points), 0)::int as total_points
-    from public.competition_players cp
-    left join public.rounds r on r.competition_id = cp.competition_id
-    left join public.round_results rr on rr.round_id = r.id and rr.user_id = cp.user_id
-    where cp.competition_id = v_comp
-    group by cp.user_id
-  ) t
+  from public.competition_players cp
+  where cp.competition_id = v_comp
   on conflict (competition_id, user_id) do update
     set current_odds = excluded.current_odds,
         updated_at = excluded.updated_at;
@@ -896,61 +947,18 @@ begin
   delete from public.rounds
   where id = p_round_id;
 
-  -- Recalculate odds based on remaining rounds' points.
-  declare
-    v_max_total integer;
-  begin
-    select coalesce(max(t.total_points), 0) into v_max_total
-    from (
-      select
-        cp.user_id,
-        coalesce(sum(rr.points), 0)::int as total_points
-      from public.competition_players cp
-      left join public.rounds r on r.competition_id = cp.competition_id
-      left join public.round_results rr on rr.round_id = r.id and rr.user_id = cp.user_id
-      where cp.competition_id = v_comp
-      group by cp.user_id
-    ) t;
-
-    insert into public.competition_odds (competition_id, user_id, current_odds, updated_at)
-    select
-      v_comp,
-      t.user_id,
-      least(
-        12.00,
-        greatest(
-          1.50,
-          round(
-            (
-              1.50
-              + 10.50 * power(
-                case
-                  when v_max_total = 0 then 1.0
-                  else greatest(0.0, least(1.0, 1.0 - (t.total_points::numeric / v_max_total)))
-                end,
-                1.35
-              )
-            )
-            + ((abs(hashtext(t.user_id::text)) % 20) / 100.0),
-            2
-          )
-        )
-      )::numeric(6,2) as new_odds,
-      now()
-    from (
-      select
-        cp.user_id,
-        coalesce(sum(rr.points), 0)::int as total_points
-      from public.competition_players cp
-      left join public.rounds r on r.competition_id = cp.competition_id
-      left join public.round_results rr on rr.round_id = r.id and rr.user_id = cp.user_id
-      where cp.competition_id = v_comp
-      group by cp.user_id
-    ) t
-    on conflict (competition_id, user_id) do update
-      set current_odds = excluded.current_odds,
-          updated_at = excluded.updated_at;
-  end;
+  -- Recalculate odds based on skill levels
+  insert into public.competition_odds (competition_id, user_id, current_odds, updated_at)
+  select
+    v_comp,
+    cp.user_id,
+    public.calculate_skill_based_odds(v_comp, cp.user_id),
+    now()
+  from public.competition_players cp
+  where cp.competition_id = v_comp
+  on conflict (competition_id, user_id) do update
+    set current_odds = excluded.current_odds,
+        updated_at = excluded.updated_at;
 end;
 $$;
 

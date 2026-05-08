@@ -8,6 +8,7 @@ type StandingRow = {
   total_points: number;
   best_round_points: number;
   avg_round_points: number;
+  skill_level: number;
   current_odds: number;
   balance: number;
   best_payout: number;
@@ -118,7 +119,7 @@ export default function StandingsPage() {
         const { data, error: standErr } = await supabase
           .from("standings")
           .select(
-            "player_id,player_name,total_points,best_round_points,avg_round_points,current_odds,balance,best_payout",
+            "player_id,player_name,total_points,best_round_points,avg_round_points,skill_level,current_odds,balance,best_payout",
           );
         if (standErr) throw standErr;
 
@@ -130,6 +131,7 @@ export default function StandingsPage() {
           total_points: Number(r.total_points ?? 0),
           best_round_points: Number(r.best_round_points ?? 0),
           avg_round_points: Number(r.avg_round_points ?? 0),
+          skill_level: Number(r.skill_level ?? 7.0),
           current_odds: Number(r.current_odds ?? 0),
           balance: Number(r.balance ?? 0),
           best_payout: Number(r.best_payout ?? 0),
@@ -245,6 +247,7 @@ export default function StandingsPage() {
                             <div className="statline">
                               <span className="badge">paras {slot.row.best_round_points}</span>
                               <span className="badge">ka {slot.row.avg_round_points.toFixed(1)}</span>
+                              <span className="badge">taito {slot.row.skill_level.toFixed(2)}</span>
                               <span className="badge">kertoimet {slot.row.current_odds.toFixed(2)}</span>
                               <span className="badge">paras voitto {slot.row.best_payout.toFixed(2)} db</span>
                             </div>
@@ -278,57 +281,132 @@ export default function StandingsPage() {
                 </div>
               </div>
 
-              <div className="card leaderboard-surface" style={{ marginTop: 12 }}>
-                <div className="muted">Kaikki pelaajat</div>
-                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                  {rankedRows.map((r) => (
-                    <div
-                      key={`${r.player_id}-${r.rank}`}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "60px 56px 1fr 120px 120px",
-                        gap: 10,
-                        alignItems: "center",
-                        padding: "10px 10px",
-                        border: "1px solid var(--line)",
-                        borderRadius: 12,
-                        background: "rgba(255,255,255,0.30)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                          color: "rgba(74, 69, 64, 0.9)",
-                        }}
-                      >
-                        #{r.rank}
-                      </div>
-                      <ShieldAvatar name={r.player_name} size={44} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {r.player_name}
+              <div className="card leaderboard-surface" style={{ marginTop: 12, position: "relative", overflow: "hidden" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    opacity: 0.06,
+                    pointerEvents: "none",
+                  }}
+                  aria-hidden="true"
+                >
+                  <img src="/gamlakarleby-crest.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+
+                <div style={{ position: "relative", zIndex: 1 }}>
+                  <div className="muted" style={{ marginBottom: 16 }}>
+                    Kaikki pelaajat
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+                      gap: 16,
+                      marginTop: 10,
+                    }}
+                  >
+                    {rankedRows.map((r) => {
+                      const seed = hashStringToInt(r.player_name);
+                      const hue = seed % 360;
+                      const glowColor = `hsl(${hue} 100% 50%)`;
+
+                      return (
+                        <div
+                          key={`${r.player_id}-${r.rank}`}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            padding: 12,
+                            borderRadius: 16,
+                            background: "rgba(255,255,255,0.08)",
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            backdropFilter: "blur(10px)",
+                            transition: "all 0.3s ease",
+                            cursor: "default",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.15)";
+                            e.currentTarget.style.border = `1px solid ${glowColor}`;
+                            e.currentTarget.style.boxShadow = `0 0 20px ${glowColor}40`;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+                            e.currentTarget.style.border = "1px solid rgba(255,255,255,0.15)";
+                            e.currentTarget.style.boxShadow = "none";
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: "relative",
+                              marginBottom: 8,
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: "absolute",
+                                inset: -8,
+                                background: glowColor,
+                                borderRadius: "50%",
+                                opacity: 0.3,
+                                filter: "blur(12px)",
+                              }}
+                              aria-hidden="true"
+                            />
+                            <ShieldAvatar name={r.player_name} size={64} />
+                          </div>
+
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 4,
+                              right: 8,
+                              fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                              fontSize: 16,
+                              fontWeight: 700,
+                              color: glowColor,
+                              textShadow: `0 0 8px ${glowColor}80`,
+                            }}
+                          >
+                            #{r.rank}
+                          </div>
+
+                          <div
+                            style={{
+                              textAlign: "center",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              width: "100%",
+                            }}
+                          >
+                            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+                              {r.player_name}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                              fontSize: 20,
+                              fontWeight: 700,
+                              color: glowColor,
+                              textShadow: `0 0 8px ${glowColor}80`,
+                            }}
+                          >
+                            {r.total_points}
+                          </div>
+                          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                            pts
+                          </div>
                         </div>
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          <span className="badge">paras {r.best_round_points}</span>{" "}
-                          <span className="badge">ka {r.avg_round_points.toFixed(1)}</span>{" "}
-                          <span className="badge">kertoimet {r.current_odds.toFixed(2)}</span>{" "}
-                          <span className="badge">{r.balance.toFixed(2)} db</span>{" "}
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                          color: "rgba(74, 69, 64, 0.9)",
-                          textAlign: "right",
-                        }}
-                      >
-                        {r.total_points} pts
-                      </div>
-                      <div className="muted" style={{ textAlign: "right" }}>
-                        paras voitto {r.best_payout.toFixed(2)} db
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </>
