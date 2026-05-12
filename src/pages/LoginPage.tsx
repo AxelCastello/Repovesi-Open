@@ -64,36 +64,29 @@ export default function LoginPage() {
       });
 
       if (signInError) {
-        const errorMsg = signInError.message || "";
-
-        if (errorMsg.includes("Invalid login credentials")) {
-          const { error: signUpError } = await supabase.auth.signUp({
-            email: derivedEmail,
-            password: derivedPassword,
-            options: {
-              data: {
-                full_name: displayName,
-                username: normalized,
-              },
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: derivedEmail,
+          password: derivedPassword,
+          options: {
+            data: {
+              full_name: displayName,
+              username: normalized,
             },
-          });
+          },
+        });
 
-          if (signUpError) {
-            if (signUpError.message.includes("already")) {
-              setStatus(
-                "Tälle käyttäjänimelle on jo tili, mutta generoitu salasana ei täsmää. " +
-                  "Pyydä ylläpitäjää nollaamaan tilisi tai luomaan se uudelleen."
-              );
-              return;
-            }
-            throw signUpError;
+        if (signUpError) {
+          if (signUpError.message.includes("already")) {
+            setStatus(
+              "Tälle käyttäjänimelle on jo tili, mutta generoitu salasana ei täsmää. " +
+                "Poista nykyinen käyttäjä Supabasesta ja yritä kirjautua uudelleen." 
+            );
+            return;
           }
-
-          setStatus("Tili luotu. Kirjaudu uudelleen.");
-          return;
+          throw signUpError;
         }
 
-        setStatus("Väärä käyttäjänimi tai salasana. Tarkista kirjoitusvirheet.");
+        setStatus("Tili luotu. Kirjaudu uudelleen.");
         return;
       }
 
