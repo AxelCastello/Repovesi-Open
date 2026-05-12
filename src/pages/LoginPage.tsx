@@ -74,9 +74,12 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="muted" style={{ fontSize: 12 }}>
-          Anna nimi, joka vastaa sallittujen pelaajien luetteloa. Salasanaa ei tarvitse antaa.
-        </div>
+      <p className="muted" style={{ marginBottom: 0 }}>
+        Anna nimi, joka vastaa sallittujen pelaajien luetteloa. Salasanaa ei tarvitse antaa.
+      </p>
+      <p className="muted" style={{ fontSize: 12 }}>
+        If you're having trouble signing in, contact an admin or try using the password reset feature in your email provider.
+      </p>
         {status ? <div className="muted">{status}</div> : null}
       </div>
       <p className="muted" style={{ marginBottom: 0 }}>
