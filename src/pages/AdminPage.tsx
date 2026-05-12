@@ -390,6 +390,26 @@ export default function AdminPage() {
     }
   }
 
+  async function onDeleteCompetition(competitionId: string, competitionName: string) {
+    if (!isAdmin) return;
+    const ok = window.confirm(`Delete competition "${competitionName}" and all its data?\nThis cannot be undone.`);
+    if (!ok) return;
+
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase.from("competitions").delete().eq("id", competitionId);
+      if (error) throw error;
+      setStatus(`Competition "${competitionName}" deleted.`);
+      const list = await reloadCompetitions();
+      setSelectedCompetitionId((list.find((c) => c.is_active) ?? list[0])?.id ?? null);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Failed to delete competition");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function applyBulkPoints(value: number) {
     const v = Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0);
     setRoundPoints((prev) => {
@@ -453,9 +473,19 @@ export default function AdminPage() {
             You are not an admin for this competition. Your view is read-only.
           </div>
         ) : (
-          <div className="row" style={{ marginTop: 10 }}>
+          <div className="row" style={{ marginTop: 10, gap: 10 }}>
             <button disabled={busy} onClick={onSetActive}>
               {busy ? "Päivitetään..." : "Tee valittu kilpailu aktiiviseksi"}
+            </button>
+            <button 
+              disabled={busy} 
+              onClick={() => {
+                const comp = competitions.find((c) => c.id === selectedCompetitionId);
+                if (comp) onDeleteCompetition(comp.id, comp.name);
+              }}
+              style={{ background: "rgba(220, 38, 38, 0.8)" }}
+            >
+              {busy ? "Poistetaan..." : "Poista kilpailu"}
             </button>
           </div>
         )}
@@ -474,7 +504,7 @@ export default function AdminPage() {
               <input
                 value={newCompetitionName}
                 onChange={(e) => setNewCompetitionName(e.target.value)}
-                placeholder="Repovesi Open 2026"
+                placeholder="GVK Open 2026"
               />
             </label>
             <label className="row" style={{ gap: 10 }}>

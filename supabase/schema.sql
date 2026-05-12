@@ -678,6 +678,48 @@ $$;
 grant execute on function public.create_round(uuid) to authenticated;
 
 -- ------------------------
+-- RPC: Join competition (player joins if invited)
+-- ------------------------
+
+create or replace function public.join_competition(p_competition_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_username text;
+  v_role text;
+begin
+  -- Get current user's username
+  select username into v_username
+  from public.profiles
+  where user_id = auth.uid();
+
+  if v_username is null then
+    raise exception 'Profile not found';
+  end if;
+
+  -- Check if user is invited to this competition
+  select role into v_role
+  from public.competition_invites
+  where competition_id = p_competition_id
+    and username = v_username;
+
+  if v_role is null then
+    raise exception 'You are not invited to this competition';
+  end if;
+
+  -- Add player to competition_players if not already there
+  insert into public.competition_players (competition_id, user_id, role)
+  values (p_competition_id, auth.uid(), v_role)
+  on conflict (competition_id, user_id) do nothing;
+end;
+$$;
+
+grant execute on function public.join_competition(uuid) to authenticated;
+
+-- ------------------------
 -- RPC: Place bet (player)
 -- ------------------------
 

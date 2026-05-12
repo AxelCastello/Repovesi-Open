@@ -216,15 +216,143 @@ export default function StandingsPage() {
                   <div className="muted" style={{ marginBottom: 16 }}>
                     Paremmuussijoitus
                   </div>
+
+                  {/* Top 3 Podium Section */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "flex-end",
+                      gap: 12,
+                      marginBottom: 24,
+                      minHeight: 200,
+                    }}
+                  >
+                    {[
+                      { position: 2, row: rankedRows.find((r) => r.rank === 2) },
+                      { position: 1, row: rankedRows.find((r) => r.rank === 1) },
+                      { position: 3, row: rankedRows.find((r) => r.rank === 3) },
+                    ].map((slot) => {
+                      const r = slot.row;
+                      if (!r) return null;
+                      const seed = hashStringToInt(r.player_name);
+                      const hue = seed % 360;
+                      const glowColor = `hsl(${hue} 100% 50%)`;
+                      const podiumHeights = { 1: 160, 2: 120, 3: 80 };
+
+                      return (
+                        <div
+                          key={`podium-${slot.position}`}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            flex: 1,
+                            maxWidth: 120,
+                          }}
+                        >
+                          {/* Podium Box */}
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              padding: 12,
+                              borderRadius: "12px 12px 0 0",
+                              background: glowColor,
+                              opacity: 0.9,
+                              width: "100%",
+                              order: 2,
+                              boxShadow: `0 0 20px ${glowColor}60`,
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: "relative",
+                                marginBottom: 8,
+                                order: -1,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  inset: -8,
+                                  background: glowColor,
+                                  borderRadius: "50%",
+                                  opacity: 0.4,
+                                  filter: "blur(12px)",
+                                }}
+                                aria-hidden="true"
+                              />
+                              <ShieldAvatar name={r.player_name} size={slot.position === 1 ? 72 : 56} />
+                            </div>
+
+                            <div
+                              style={{
+                                fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                                fontSize: 24,
+                                fontWeight: 700,
+                                color: "rgba(74, 69, 64, 0.95)",
+                                marginBottom: 4,
+                              }}
+                            >
+                              #{slot.position}
+                            </div>
+
+                            <div
+                              style={{
+                                textAlign: "center",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                width: "100%",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                marginBottom: 4,
+                              }}
+                            >
+                              {r.player_name}
+                            </div>
+
+                            <div
+                              style={{
+                                fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                                fontSize: 16,
+                                fontWeight: 700,
+                                color: "rgba(74, 69, 64, 0.95)",
+                              }}
+                            >
+                              {r.total_points} pts
+                            </div>
+                          </div>
+
+                          {/* Podium Bar */}
+                          <div
+                            style={{
+                              width: "100%",
+                              height: podiumHeights[slot.position as keyof typeof podiumHeights],
+                              background: `linear-gradient(to right, ${glowColor}40, ${glowColor}20)`,
+                              borderLeft: `1px solid ${glowColor}60`,
+                              borderRight: `1px solid ${glowColor}60`,
+                              borderBottom: `2px solid ${glowColor}`,
+                              order: 3,
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Remaining players grid */}
                   <div
                     style={{
                       display: "grid",
                       gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-                      gap: 16,
-                      marginTop: 10,
+                      gap: 12,
+                      marginTop: 16,
                     }}
                   >
-                    {rankedRows.map((r) => {
+                    {rankedRows.slice(3).map((r) => {
                       const seed = hashStringToInt(r.player_name);
                       const hue = seed % 360;
                       const glowColor = `hsl(${hue} 100% 50%)`;
@@ -237,7 +365,7 @@ export default function StandingsPage() {
                             flexDirection: "column",
                             alignItems: "center",
                             padding: 12,
-                            borderRadius: 16,
+                            borderRadius: 12,
                             background: "rgba(255,255,255,0.08)",
                             border: "1px solid rgba(255,255,255,0.15)",
                             backdropFilter: "blur(10px)",
@@ -272,7 +400,7 @@ export default function StandingsPage() {
                               }}
                               aria-hidden="true"
                             />
-                            <ShieldAvatar name={r.player_name} size={64} />
+                            <ShieldAvatar name={r.player_name} size={56} />
                           </div>
 
                           <div
@@ -281,7 +409,7 @@ export default function StandingsPage() {
                               top: 4,
                               right: 8,
                               fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                              fontSize: 16,
+                              fontSize: 14,
                               fontWeight: 700,
                               color: glowColor,
                               textShadow: `0 0 8px ${glowColor}80`,
@@ -299,7 +427,7 @@ export default function StandingsPage() {
                               width: "100%",
                             }}
                           >
-                            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
                               {r.player_name}
                             </div>
                           </div>
@@ -307,7 +435,7 @@ export default function StandingsPage() {
                           <div
                             style={{
                               fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                              fontSize: 20,
+                              fontSize: 16,
                               fontWeight: 700,
                               color: glowColor,
                               textShadow: `0 0 8px ${glowColor}80`,
@@ -315,7 +443,7 @@ export default function StandingsPage() {
                           >
                             {r.total_points}
                           </div>
-                          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                          <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
                             pts
                           </div>
                         </div>
