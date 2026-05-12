@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import {
   normalizeUsername,
@@ -10,15 +11,34 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const displayName = username.trim();
   const normalized = normalizeUsername(displayName);
   const derivedEmail = normalized ? usernameToEmail(displayName) : "";
   const derivedPassword = normalized ? usernameToPassword(displayName) : "";
 
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      const currentEmail = data.session?.user?.email ?? null;
+      setSessionEmail(currentEmail);
+      if (currentEmail) {
+        navigate("/");
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
+
   async function onSignIn() {
     if (!normalized) {
-      setStatus("Enter a valid username.");
+      setStatus("Anna kelvollinen käyttäjänimi.");
       return;
     }
 
@@ -27,7 +47,7 @@ export default function LoginPage() {
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
-      const currentEmail = sessionData.session?.user?.email;
+      const currentEmail = sessionData.session?.user?.email ?? null;
 
       if (currentEmail === derivedEmail) {
         setStatus(`Olet jo kirjautunut sisään käyttäjällä ${displayName}.`);
@@ -38,15 +58,10 @@ export default function LoginPage() {
         await supabase.auth.signOut();
       }
 
-      const signIn = async () => {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: derivedEmail,
-          password: derivedPassword,
-        });
-        return error;
-      };
-
-      let signInError = await signIn();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: derivedEmail,
+        password: derivedPassword,
+      });
 
       if (signInError) {
         const errorMsg = signInError.message || "";
@@ -65,29 +80,26 @@ export default function LoginPage() {
 
           if (signUpError) {
             if (signUpError.message.includes("already")) {
-              await supabase.auth.signOut();
-              signInError = await signIn();
-              if (!signInError) {
-                setStatus("Signed in.");
-                return;
-              }
-              setStatus("Account exists but credentials are invalid. Check your username spelling or contact an admin.");
+              setStatus(
+                "Tälle käyttäjänimelle on jo tili, mutta generoitu salasana ei täsmää. " +
+                  "Pyydä ylläpitäjää nollaamaan tilisi tai luomaan se uudelleen."
+              );
               return;
             }
             throw signUpError;
           }
 
-          setStatus("Account created. You should now be able to sign in again.");
+          setStatus("Tili luotu. Kirjaudu uudelleen.");
           return;
         }
 
-        setStatus("Invalid username or password. Check your username spelling.");
+        setStatus("Väärä käyttäjänimi tai salasana. Tarkista kirjoitusvirheet.");
         return;
       }
 
-      setStatus("Signed in.");
+      setStatus("Kirjauduttu sisään.");
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : "Failed to sign in");
+      setStatus(e instanceof Error ? e.message : "Kirjautuminen epäonnistui.");
     } finally {
       setBusy(false);
     }
@@ -115,7 +127,10 @@ export default function LoginPage() {
 
       {normalized && (
         <div className="muted" style={{ fontSize: 11, marginTop: 12, padding: 8, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 4 }}>
-          <strong>Debug:</strong> Email: {derivedEmail}
+          <div><strong>Tunnistetiedot:</strong></div>
+          <div>Email: {derivedEmail}</div>
+          <div>Normitettu käyttäjä: {normalized}</div>
+          <div>Sessiotili: {sessionEmail ?? "ei kirjautuneena"}</div>
         </div>
       )}
       <p className="muted" style={{ marginBottom: 0 }}>
