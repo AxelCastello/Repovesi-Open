@@ -32,6 +32,16 @@ export default function LoginPage() {
       });
 
       if (signInError) {
+        const errorMsg = signInError.message || "";
+        
+        // If account already exists, don't try to sign up again
+        if (errorMsg.includes("Invalid login credentials")) {
+          setStatus("Invalid username or password. Check your username spelling.");
+          setBusy(false);
+          return;
+        }
+        
+        // Try to sign up if user doesn't exist yet
         const { error: signUpError } = await supabase.auth.signUp({
           email: derivedEmail,
           password: derivedPassword,
@@ -42,8 +52,16 @@ export default function LoginPage() {
             },
           },
         });
-        if (signUpError) throw signUpError;
-        setStatus("Account created. You should now be able to sign in again.");
+        
+        if (signUpError) {
+          if (signUpError.message.includes("already")) {
+            setStatus("Account exists. Try signing in again, or refresh the page and retry.");
+          } else {
+            throw signUpError;
+          }
+        } else {
+          setStatus("Account created. You should now be able to sign in again.");
+        }
       } else {
         setStatus("Signed in.");
       }
