@@ -92,6 +92,11 @@ export default function LoginPage() {
           </button>
         </div>
 
+      {normalized && (
+        <div className="muted" style={{ fontSize: 11, marginTop: 12, padding: 8, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 4 }}>
+          <strong>Debug:</strong> Email: {derivedEmail}
+        </div>
+      )}
       <p className="muted" style={{ marginBottom: 0 }}>
         Anna nimi, joka vastaa sallittujen pelaajien luetteloa. Salasanaa ei tarvitse antaa.
       </p>
