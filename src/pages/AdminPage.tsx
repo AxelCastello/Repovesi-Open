@@ -184,6 +184,32 @@ export default function AdminPage() {
     return list;
   }
 
+  async function onClaimAdmin() {
+    if (!session || !selectedCompetitionId) return;
+
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase.from("competition_players").upsert(
+        {
+          competition_id: selectedCompetitionId,
+          user_id: session.user.id,
+          role: "admin",
+        },
+        { onConflict: "competition_id,user_id" }
+      );
+      if (error) throw error;
+
+      setIsAnyAdmin(true);
+      setIsAdmin(true);
+      setStatus("Olet nyt ylläpitäjä valitussa kilpailussa.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Failed to claim admin rights");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onSetActive() {
     if (!selectedCompetitionId) return;
     if (!isAdmin) return;
@@ -468,7 +494,16 @@ export default function AdminPage() {
           </label>
         </div>
 
-        {!isAdmin ? (
+        {!isAnyAdmin ? (
+          <div style={{ marginTop: 10 }}>
+            <div className="muted">
+              There are no competition admins configured. Claim admin rights for the current competition to restore administration.
+            </div>
+            <button disabled={busy || !selectedCompetitionId} onClick={onClaimAdmin} style={{ marginTop: 10 }}>
+              {busy ? "Working..." : "Claim admin rights"}
+            </button>
+          </div>
+        ) : !isAdmin ? (
           <div className="muted" style={{ marginTop: 10 }}>
             You are not an admin for this competition. Your view is read-only.
           </div>
