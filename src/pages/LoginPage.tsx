@@ -26,45 +26,66 @@ export default function LoginPage() {
     setStatus(null);
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: derivedEmail,
-        password: derivedPassword,
-      });
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentEmail = sessionData.session?.user?.email;
+
+      if (currentEmail === derivedEmail) {
+        setStatus(`Olet jo kirjautunut sisään käyttäjällä ${displayName}.`);
+        return;
+      }
+
+      if (currentEmail && currentEmail !== derivedEmail) {
+        await supabase.auth.signOut();
+      }
+
+      const signIn = async () => {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: derivedEmail,
+          password: derivedPassword,
+        });
+        return error;
+      };
+
+      let signInError = await signIn();
 
       if (signInError) {
         const errorMsg = signInError.message || "";
-        
-        // If account already exists, don't try to sign up again
+
         if (errorMsg.includes("Invalid login credentials")) {
-          setStatus("Invalid username or password. Check your username spelling.");
-          setBusy(false);
-          return;
-        }
-        
-        // Try to sign up if user doesn't exist yet
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: derivedEmail,
-          password: derivedPassword,
-          options: {
-            data: {
-              full_name: displayName,
-              username: normalized,
+          const { error: signUpError } = await supabase.auth.signUp({
+            email: derivedEmail,
+            password: derivedPassword,
+            options: {
+              data: {
+                full_name: displayName,
+                username: normalized,
+              },
             },
-          },
-        });
-        
-        if (signUpError) {
-          if (signUpError.message.includes("already")) {
-            setStatus("Account exists. Try signing in again, or refresh the page and retry.");
-          } else {
+          });
+
+          if (signUpError) {
+            if (signUpError.message.includes("already")) {
+              await supabase.auth.signOut();
+              signInError = await signIn();
+              if (!signInError) {
+                setStatus("Signed in.");
+                return;
+              }
+              setStatus("Account exists but credentials are invalid. Check your username spelling or contact an admin.");
+              return;
+            }
             throw signUpError;
           }
-        } else {
+
           setStatus("Account created. You should now be able to sign in again.");
+          return;
         }
-      } else {
-        setStatus("Signed in.");
+
+        setStatus("Invalid username or password. Check your username spelling.");
+        return;
       }
+
+      setStatus("Signed in.");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Failed to sign in");
     } finally {
