@@ -287,6 +287,26 @@ export default function AdminPage() {
       );
       if (insertErr) throw insertErr;
 
+      const { data: profileRows, error: profileErr } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("username", normalized)
+        .limit(1);
+      if (profileErr) throw profileErr;
+
+      if ((profileRows ?? []).length > 0) {
+        const userId = (profileRows[0] as any).user_id as string;
+        const { error: whitelistErr } = await supabase.from("competition_players").upsert(
+          {
+            competition_id: selectedCompetitionId,
+            user_id: userId,
+            role: roleToAdd,
+          },
+          { onConflict: "competition_id,user_id" },
+        );
+        if (whitelistErr) throw whitelistErr;
+      }
+
       setUsernameToAdd("");
       setRoleToAdd("player");
       setStatus(`Invited: ${normalized}. They will appear when they first log in.`);
