@@ -1,4 +1,4 @@
-# Repovesi Open
+# GVK Open
 
 A simple React + Supabase app with:
 - `Standings` page (podium + rankings + current odds)
