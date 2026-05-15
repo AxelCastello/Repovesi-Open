@@ -1,4 +1,4 @@
--- Repovesi Open - Supabase schema
+-- GVK Open - Supabase schema
 -- Apply this in Supabase SQL editor.
 
 create extension if not exists pgcrypto;
@@ -98,6 +98,13 @@ create table if not exists public.bets (
 create index if not exists bets_round_id_idx on public.bets(round_id);
 create index if not exists bets_user_id_idx on public.bets(user_id);
 
+-- ------------------------
+-- FIX 3: seed_initial_odds is the canonical baseline when no round history exists.
+-- Used as the fallback in calculate_skill_based_odds so that after a round
+-- is deleted (and round_results cascade away) odds return to their original
+-- per-player values instead of collapsing to the 1.50 clamp floor.
+-- ------------------------
+
 create or replace function public.seed_initial_odds(p_competition_id uuid, p_user_id uuid)
 returns numeric
 language sql
@@ -137,7 +144,7 @@ declare
 begin
   -- Start with base skill of 7.0
   v_skill := 7.0;
-  
+
   -- For each round, add or subtract based on points earned
   -- 6+ points: +0.05 per point (10 pts = +0.5, 20 pts = +1.0, etc)
   -- 5 or less: -0.3 per round
@@ -153,48 +160,66 @@ begin
   join public.rounds r on r.id = rr.round_id
   where r.competition_id = p_competition_id
     and rr.user_id = p_user_id;
-  
+
   v_skill := v_skill + v_skill_delta;
-  
+
   -- Cap at 10.0 max and 5.0 min
   return round(least(10.0, greatest(5.0, v_skill)), 2);
 end;
 $$;
 
--- Function to calculate odds based on skill levels
+-- ------------------------
+-- FIX 3: calculate_skill_based_odds now falls back to seed_initial_odds when
+-- no round results exist for the competition. Previously, with everyone at the
+-- same base skill (7.0), avg_skill / skill_level ≈ 1.0 for all players, which
+-- hit the 1.50 clamp and lost the original per-player spread.
+-- ------------------------
+
 create or replace function public.calculate_skill_based_odds(p_competition_id uuid, p_user_id uuid)
 returns numeric
 language plpgsql
 stable
 as $$
 declare
-  v_skill numeric;
-  v_avg_skill numeric;
-  v_odds numeric;
+  v_skill      numeric;
+  v_avg_skill  numeric;
+  v_odds       numeric;
+  v_round_count integer;
 begin
-  -- Calculate skill level based on accumulated points
+  -- Count settled rounds for this competition.
+  select count(*)::int
+  into v_round_count
+  from public.rounds
+  where competition_id = p_competition_id
+    and status = 'settled';
+
+  -- If no settled rounds yet (or all rounds deleted), fall back to the
+  -- deterministic seed so every player keeps their original spread.
+  if v_round_count = 0 then
+    return public.seed_initial_odds(p_competition_id, p_user_id);
+  end if;
+
   select public.calculate_skill_level(p_competition_id, p_user_id) into v_skill;
 
   if v_skill is null then
-    return 5.00; -- fallback
+    return public.seed_initial_odds(p_competition_id, p_user_id);
   end if;
 
-  -- Calculate average skill level of all players in competition
+  -- Average skill of all players in the competition.
   select avg(public.calculate_skill_level(p_competition_id, cp.user_id)) into v_avg_skill
   from public.competition_players cp
   where cp.competition_id = p_competition_id;
 
   if v_avg_skill is null or v_avg_skill = 0 then
-    return 5.00; -- fallback
+    return public.seed_initial_odds(p_competition_id, p_user_id);
   end if;
 
-  -- Calculate odds: 1 / ((skill_level/100) / (avg_skill/100)) = avg_skill / skill_level
+  -- odds = avg_skill / player_skill  (better player → lower/shorter odds)
   v_odds := v_avg_skill / v_skill;
 
-  -- Add small deterministic jitter to avoid identical odds
+  -- Small deterministic jitter to keep odds distinguishable.
   v_odds := v_odds + ((abs(hashtext(p_user_id::text)) % 20) / 100.0);
 
-  -- Clamp between reasonable bounds
   return least(12.00, greatest(1.50, round(v_odds, 2)));
 end;
 $$;
@@ -232,7 +257,16 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
--- Auto-create profile rows when a user signs up.
+-- ------------------------
+-- FIX 1: Auto-create profile rows when a user signs up.
+-- The original used ON CONFLICT DO UPDATE, which fires an UPDATE on the
+-- profiles row — but on_profile_created only listened to INSERT, so
+-- handle_profile_invites never ran for users who signed up after being invited.
+-- Solution: always use a plain INSERT with ON CONFLICT DO NOTHING so the
+-- INSERT trigger fires reliably, and rely on on_profile_updated as the
+-- safety net for any subsequent username changes.
+-- ------------------------
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -241,24 +275,24 @@ set search_path = public
 as $$
 declare
   v_username text;
-  v_display text;
+  v_display  text;
 begin
   v_username := nullif(trim(new.raw_user_meta_data->>'username'), '');
-  v_display := nullif(trim(new.raw_user_meta_data->>'full_name'), '');
+  v_display  := nullif(trim(new.raw_user_meta_data->>'full_name'), '');
 
   if v_username is null then
-    -- Fall back: use the email local-part as username.
     v_username := split_part(new.email, '@', 1);
   end if;
   if v_display is null then
     v_display := v_username;
   end if;
 
+  -- Use ON CONFLICT DO NOTHING so this always fires the INSERT trigger on
+  -- profiles, which in turn fires handle_profile_invites to wire the player
+  -- into any competitions they were pre-invited to.
   insert into public.profiles (user_id, username, display_name)
   values (new.id, v_username, v_display)
-  on conflict (user_id) do update
-    set username = excluded.username,
-        display_name = excluded.display_name;
+  on conflict (user_id) do nothing;
 
   return new;
 end;
@@ -270,7 +304,6 @@ after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
 -- View: Active competition standings (sorted by total_points in the frontend)
--- Note: when changing view columns, dropping avoids "cannot change name of view column" errors.
 drop view if exists public.standings;
 create view public.standings as
 select
@@ -398,8 +431,6 @@ using (
 );
 
 -- Competition players:
--- Members can read the whitelist for active competitions.
--- Admins can read the whitelist for their competitions even if inactive.
 drop policy if exists "members can view competition players" on public.competition_players;
 create policy "members can view competition players"
 on public.competition_players
@@ -411,7 +442,6 @@ using (
 );
 
 -- Results:
--- Members of an active competition can read all results in that competition.
 drop policy if exists "members can view results for active competitions" on public.results;
 create policy "members can view results for active competitions"
 on public.results
@@ -421,8 +451,6 @@ using (
   public.is_active_competition_member(competition_id)
 );
 
--- Insert:
--- Players can insert results only for themselves and only into competitions they are whitelisted for.
 drop policy if exists "players can insert own results" on public.results;
 create policy "players can insert own results"
 on public.results
@@ -518,7 +546,6 @@ using (
   or public.is_competition_admin(competition_id)
 );
 
-
 -- ------------------------
 -- Admin-only whitelist management
 -- ------------------------
@@ -554,7 +581,7 @@ using (
 );
 
 -- ------------------------
--- RPC: Activate competition (keeps ordering simple)
+-- RPC: Activate competition
 -- ------------------------
 
 create or replace function public.set_active_competition(p_competition_id uuid)
@@ -563,7 +590,6 @@ language plpgsql
 security definer
 as $$
 begin
-  -- Authorization: caller must be an admin for the target competition.
   if not exists (
     select 1
     from public.competition_players cp
@@ -574,13 +600,8 @@ begin
     raise exception 'Not authorized';
   end if;
 
-  update public.competitions
-  set is_active = false
-  where is_active = true;
-
-  update public.competitions
-  set is_active = true
-  where id = p_competition_id;
+  update public.competitions set is_active = false where is_active = true;
+  update public.competitions set is_active = true  where id = p_competition_id;
 end;
 $$;
 
@@ -603,12 +624,9 @@ as $$
 declare
   v_id uuid;
 begin
-  -- Authorization: caller must already be an admin of at least one competition.
   if not exists (
-    select 1
-    from public.competition_players cp
-    where cp.user_id = auth.uid()
-      and cp.role = 'admin'
+    select 1 from public.competition_players cp
+    where cp.user_id = auth.uid() and cp.role = 'admin'
   ) then
     raise exception 'Not authorized';
   end if;
@@ -617,19 +635,13 @@ begin
   values (p_name, coalesce(p_start_date, current_date), p_end_date, false)
   returning id into v_id;
 
-  -- Make the creator an admin of the new competition.
   insert into public.competition_players (competition_id, user_id, role)
   values (v_id, auth.uid(), 'admin')
   on conflict (competition_id, user_id) do update set role = 'admin';
 
   if p_make_active then
-    update public.competitions
-    set is_active = false
-    where is_active = true;
-
-    update public.competitions
-    set is_active = true
-    where id = v_id;
+    update public.competitions set is_active = false where is_active = true;
+    update public.competitions set is_active = true  where id = v_id;
   end if;
 
   return v_id;
@@ -650,17 +662,15 @@ set search_path = public
 as $$
 declare
   v_next integer;
-  v_id uuid;
+  v_id   uuid;
 begin
   if not public.is_competition_admin(p_competition_id) then
     raise exception 'Not authorized';
   end if;
 
-  -- Close any previous open round for this competition.
   update public.rounds
   set status = 'closed'
-  where competition_id = p_competition_id
-    and status = 'open';
+  where competition_id = p_competition_id and status = 'open';
 
   select coalesce(max(round_number), 0) + 1
   into v_next
@@ -689,9 +699,8 @@ set search_path = public
 as $$
 declare
   v_username text;
-  v_role text;
+  v_role     text;
 begin
-  -- Get current user's username
   select username into v_username
   from public.profiles
   where user_id = auth.uid();
@@ -700,7 +709,6 @@ begin
     raise exception 'Profile not found';
   end if;
 
-  -- Check if user is invited to this competition
   select role into v_role
   from public.competition_invites
   where competition_id = p_competition_id
@@ -710,7 +718,6 @@ begin
     raise exception 'You are not invited to this competition';
   end if;
 
-  -- Add player to competition_players if not already there
   insert into public.competition_players (competition_id, user_id, role)
   values (p_competition_id, auth.uid(), v_role)
   on conflict (competition_id, user_id) do nothing;
@@ -724,9 +731,9 @@ grant execute on function public.join_competition(uuid) to authenticated;
 -- ------------------------
 
 create or replace function public.place_bet(
-  p_round_id uuid,
+  p_round_id    uuid,
   p_pick_user_id uuid,
-  p_amount numeric
+  p_amount      numeric
 )
 returns uuid
 language plpgsql
@@ -734,11 +741,11 @@ security definer
 set search_path = public
 as $$
 declare
-  v_comp uuid;
-  v_status text;
-  v_balance numeric(12,2);
-  v_odds numeric(6,2);
-  v_id uuid;
+  v_comp          uuid;
+  v_status        text;
+  v_balance       numeric(12,2);
+  v_odds          numeric(6,2);
+  v_id            uuid;
   v_existing_bets integer;
 begin
   if p_amount is null or p_amount <= 0 then
@@ -762,17 +769,14 @@ begin
     raise exception 'Not authorized';
   end if;
 
-  -- Limit: max 3 bets per player per round.
-  select count(*)::int
-  into v_existing_bets
+  select count(*)::int into v_existing_bets
   from public.bets b
-  where b.round_id = p_round_id
-    and b.user_id = auth.uid();
+  where b.round_id = p_round_id and b.user_id = auth.uid();
+
   if v_existing_bets >= 3 then
     raise exception 'Bet limit reached: max 3 bets per round';
   end if;
 
-  -- Backfill safety for players created before wallet/odds triggers existed.
   insert into public.competition_wallets (competition_id, user_id, balance)
   values (v_comp, auth.uid(), 100.00)
   on conflict (competition_id, user_id) do nothing;
@@ -785,42 +789,31 @@ begin
   values (v_comp, p_pick_user_id, public.calculate_skill_based_odds(v_comp, p_pick_user_id))
   on conflict (competition_id, user_id) do nothing;
 
-  -- pick must be a whitelisted player in this competition
   if not exists (
-    select 1
-    from public.competition_players cp
-    where cp.competition_id = v_comp
-      and cp.user_id = p_pick_user_id
+    select 1 from public.competition_players cp
+    where cp.competition_id = v_comp and cp.user_id = p_pick_user_id
   ) then
     raise exception 'Invalid pick';
   end if;
 
   select w.balance into v_balance
   from public.competition_wallets w
-  where w.competition_id = v_comp
-    and w.user_id = auth.uid();
+  where w.competition_id = v_comp and w.user_id = auth.uid();
 
-  if v_balance is null then
-    raise exception 'Wallet not found';
-  end if;
-  if v_balance < p_amount then
-    raise exception 'Insufficient dubloons';
-  end if;
+  if v_balance is null then raise exception 'Wallet not found'; end if;
+  if v_balance < p_amount then raise exception 'Insufficient dubloons'; end if;
 
   select o.current_odds into v_odds
   from public.competition_odds o
-  where o.competition_id = v_comp
-    and o.user_id = p_pick_user_id;
+  where o.competition_id = v_comp and o.user_id = p_pick_user_id;
 
   if v_odds is null then
     v_odds := public.calculate_skill_based_odds(v_comp, p_pick_user_id);
   end if;
 
-  -- Deduct immediately.
   update public.competition_wallets
   set balance = balance - p_amount
-  where competition_id = v_comp
-    and user_id = auth.uid();
+  where competition_id = v_comp and user_id = auth.uid();
 
   insert into public.bets (competition_id, round_id, user_id, pick_user_id, amount, odds_snapshot)
   values (v_comp, p_round_id, auth.uid(), p_pick_user_id, round(p_amount,2), v_odds)
@@ -838,7 +831,7 @@ grant execute on function public.place_bet(uuid, uuid, numeric) to authenticated
 -- ------------------------
 
 create or replace function public.submit_round_results(
-  p_round_id uuid,
+  p_round_id   uuid,
   p_results_json jsonb
 )
 returns void
@@ -847,24 +840,19 @@ security definer
 set search_path = public
 as $$
 declare
-  v_comp uuid;
+  v_comp   uuid;
   v_winner uuid;
-  v_max integer;
-  v_max_total integer;
+  v_max    integer;
 begin
   select competition_id into v_comp
-  from public.rounds
-  where id = p_round_id;
+  from public.rounds where id = p_round_id;
 
-  if v_comp is null then
-    raise exception 'Round not found';
-  end if;
+  if v_comp is null then raise exception 'Round not found'; end if;
 
   if not public.is_competition_admin(v_comp) then
     raise exception 'Not authorized';
   end if;
 
-  -- Upsert results
   insert into public.round_results (round_id, user_id, points)
   select
     p_round_id,
@@ -874,11 +862,8 @@ begin
   on conflict (round_id, user_id) do update
     set points = excluded.points;
 
-  update public.rounds
-  set status = 'closed'
-  where id = p_round_id;
+  update public.rounds set status = 'closed' where id = p_round_id;
 
-  -- Winner = max points in the round (ties: lowest uuid deterministic)
   select rr.user_id, rr.points
   into v_winner, v_max
   from public.round_results rr
@@ -886,45 +871,35 @@ begin
   order by rr.points desc, rr.user_id asc
   limit 1;
 
-  -- Settle bets for this round (amount already deducted at placement)
   update public.bets b
   set
     settled = true,
-    won = (b.pick_user_id = v_winner),
-    payout = case when b.pick_user_id = v_winner then round(b.amount * b.odds_snapshot, 2) else 0.00 end
-  where b.round_id = p_round_id
-    and b.settled = false;
+    won     = (b.pick_user_id = v_winner),
+    payout  = case when b.pick_user_id = v_winner
+                   then round(b.amount * b.odds_snapshot, 2)
+                   else 0.00 end
+  where b.round_id = p_round_id and b.settled = false;
 
-  -- Payout winners
   update public.competition_wallets w
   set balance = w.balance + s.payout
   from (
     select competition_id, user_id, sum(payout)::numeric(12,2) as payout
     from public.bets
-    where round_id = p_round_id
-      and settled = true
-      and won = true
+    where round_id = p_round_id and settled = true and won = true
     group by competition_id, user_id
   ) s
-  where w.competition_id = s.competition_id
-    and w.user_id = s.user_id;
+  where w.competition_id = s.competition_id and w.user_id = s.user_id;
 
-  update public.rounds
-  set status = 'settled'
-  where id = p_round_id;
+  update public.rounds set status = 'settled' where id = p_round_id;
 
-  -- Update odds based on skill levels (not points)
+  -- Recalculate odds now that round_results exist.
   insert into public.competition_odds (competition_id, user_id, current_odds, updated_at)
-  select
-    v_comp,
-    cp.user_id,
-    public.calculate_skill_based_odds(v_comp, cp.user_id),
-    now()
+  select v_comp, cp.user_id, public.calculate_skill_based_odds(v_comp, cp.user_id), now()
   from public.competition_players cp
   where cp.competition_id = v_comp
   on conflict (competition_id, user_id) do update
     set current_odds = excluded.current_odds,
-        updated_at = excluded.updated_at;
+        updated_at   = excluded.updated_at;
 end;
 $$;
 
@@ -932,9 +907,9 @@ grant execute on function public.submit_round_results(uuid, jsonb) to authentica
 
 -- ------------------------
 -- RPC: Delete round (admin-only)
--- Removes round results and bets for the round.
--- If round was settled, payouts are reversed first.
--- Bet stake amount is always refunded to bettors.
+-- Reverses settled payouts, refunds stakes, then removes the round.
+-- FIX 3: after cascade delete, calculate_skill_based_odds now detects
+-- zero settled rounds and falls back to seed_initial_odds automatically.
 -- ------------------------
 
 create or replace function public.delete_round(p_round_id uuid)
@@ -947,60 +922,51 @@ declare
   v_comp uuid;
 begin
   select competition_id into v_comp
-  from public.rounds
-  where id = p_round_id;
+  from public.rounds where id = p_round_id;
 
-  if v_comp is null then
-    raise exception 'Round not found';
-  end if;
+  if v_comp is null then raise exception 'Round not found'; end if;
 
   if not public.is_competition_admin(v_comp) then
     raise exception 'Not authorized';
   end if;
 
-  -- Reverse payouts for already-settled winning bets.
+  -- Reverse payouts for settled winning bets.
   update public.competition_wallets w
   set balance = w.balance - s.payout_sum
   from (
-    select b.competition_id, b.user_id, coalesce(sum(b.payout), 0)::numeric(12,2) as payout_sum
+    select b.competition_id, b.user_id,
+           coalesce(sum(b.payout), 0)::numeric(12,2) as payout_sum
     from public.bets b
     where b.round_id = p_round_id
-      and b.settled = true
-      and b.won = true
-      and b.payout > 0
+      and b.settled = true and b.won = true and b.payout > 0
     group by b.competition_id, b.user_id
   ) s
-  where w.competition_id = s.competition_id
-    and w.user_id = s.user_id;
+  where w.competition_id = s.competition_id and w.user_id = s.user_id;
 
-  -- Refund bet stakes for all bets in that round.
+  -- Refund stakes for all bets in this round.
   update public.competition_wallets w
   set balance = w.balance + s.amount_sum
   from (
-    select b.competition_id, b.user_id, coalesce(sum(b.amount), 0)::numeric(12,2) as amount_sum
+    select b.competition_id, b.user_id,
+           coalesce(sum(b.amount), 0)::numeric(12,2) as amount_sum
     from public.bets b
     where b.round_id = p_round_id
     group by b.competition_id, b.user_id
   ) s
-  where w.competition_id = s.competition_id
-    and w.user_id = s.user_id;
+  where w.competition_id = s.competition_id and w.user_id = s.user_id;
 
   -- Remove round (cascades to round_results + bets).
-  delete from public.rounds
-  where id = p_round_id;
+  delete from public.rounds where id = p_round_id;
 
-  -- Recalculate odds based on skill levels
+  -- Recalculate odds. With no settled rounds remaining, calculate_skill_based_odds
+  -- returns seed_initial_odds for each player, restoring the original spread.
   insert into public.competition_odds (competition_id, user_id, current_odds, updated_at)
-  select
-    v_comp,
-    cp.user_id,
-    public.calculate_skill_based_odds(v_comp, cp.user_id),
-    now()
+  select v_comp, cp.user_id, public.calculate_skill_based_odds(v_comp, cp.user_id), now()
   from public.competition_players cp
   where cp.competition_id = v_comp
   on conflict (competition_id, user_id) do update
     set current_odds = excluded.current_odds,
-        updated_at = excluded.updated_at;
+        updated_at   = excluded.updated_at;
 end;
 $$;
 
@@ -1024,10 +990,8 @@ for select
 to authenticated
 using (
   exists (
-    select 1
-    from public.competition_players cp
-    where cp.user_id = auth.uid()
-      and cp.role = 'admin'
+    select 1 from public.competition_players cp
+    where cp.user_id = auth.uid() and cp.role = 'admin'
   )
 );
 
@@ -1037,7 +1001,7 @@ using (
 
 create table if not exists public.competition_invites (
   competition_id uuid not null references public.competitions(id) on delete cascade,
-  username text not null, -- normalized (e.g. "anton-s")
+  username text not null, -- normalized (e.g. "axel-s")
   role text not null default 'player' check (role in ('player', 'admin')),
   created_at timestamptz not null default now(),
   primary key (competition_id, username)
@@ -1045,7 +1009,6 @@ create table if not exists public.competition_invites (
 
 alter table public.competition_invites enable row level security;
 
--- Admins can manage invites.
 drop policy if exists "admins can view competition_invites" on public.competition_invites;
 create policy "admins can view competition_invites"
 on public.competition_invites
@@ -1075,7 +1038,19 @@ for delete
 to authenticated
 using (public.is_competition_admin(competition_id));
 
--- When a user first signs up (profile created), automatically add them to any competition invites.
+-- ------------------------
+-- FIX 1: Profile → competition_players wiring.
+--
+-- When a new profile is inserted (i.e. a user logs in for the first time),
+-- automatically add them to any competitions they were pre-invited to.
+--
+-- The original handle_new_user used ON CONFLICT DO UPDATE on profiles, which
+-- produced an UPDATE event instead of INSERT, so on_profile_created never fired.
+-- Now handle_new_user uses ON CONFLICT DO NOTHING (insert-only), guaranteeing
+-- the INSERT trigger fires. on_profile_updated remains as a safety net for
+-- username corrections.
+-- ------------------------
+
 create or replace function public.handle_profile_invites()
 returns trigger
 language plpgsql
@@ -1084,10 +1059,7 @@ set search_path = public
 as $$
 begin
   insert into public.competition_players (competition_id, user_id, role)
-  select
-    ci.competition_id,
-    new.user_id,
-    ci.role
+  select ci.competition_id, new.user_id, ci.role
   from public.competition_invites ci
   where ci.username = new.username
   on conflict (competition_id, user_id) do update
@@ -1107,4 +1079,32 @@ create trigger on_profile_updated
 after update on public.profiles
 for each row execute procedure public.handle_profile_invites();
 
+-- ------------------------
+-- FIX 2: GVK Open seed data.
+-- Creates the "GVK Open" competition and pre-invites Axel S as admin.
+-- Run once; idempotent due to ON CONFLICT DO NOTHING.
+--
+-- IMPORTANT: replace 'axel-s' below with whatever username Axel S uses when
+-- signing up (the local-part of their email, or the username set in metadata).
+-- ------------------------
 
+do $$
+declare
+  v_comp_id uuid;
+begin
+  -- Create the competition if it doesn't exist yet.
+  insert into public.competitions (name, start_date, is_active)
+  values ('GVK Open', current_date, true)
+  on conflict (name) do nothing;
+
+  select id into v_comp_id
+  from public.competitions
+  where name = 'GVK Open';
+
+  -- Pre-invite Axel S as admin so they get wired up on first login.
+  -- Adjust the username string to match what Axel's account will use.
+  insert into public.competition_invites (competition_id, username, role)
+  values (v_comp_id, 'axel-s', 'admin')
+  on conflict (competition_id, username) do update set role = 'admin';
+end;
+$$;
