@@ -482,7 +482,7 @@ export default function AdminPage() {
             <br />
             username: {session.user.user_metadata?.username ?? "—"}
             <br />
-            internal email: {session.user.email ?? "—"}
+            
           </div>
         </div>
       ) : null}
