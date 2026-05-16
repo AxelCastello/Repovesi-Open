@@ -218,130 +218,177 @@ export default function StandingsPage() {
                   </div>
 
                   {/* Top 3 Podium Section */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "flex-end",
-                      gap: 12,
-                      marginBottom: 24,
-                      minHeight: 200,
-                    }}
-                  >
-                    {[
-                      { position: 2, row: rankedRows.find((r) => r.rank === 2) },
-                      { position: 1, row: rankedRows.find((r) => r.rank === 1) },
-                      { position: 3, row: rankedRows.find((r) => r.rank === 3) },
-                    ].map((slot) => {
-                      const r = slot.row;
-                      if (!r) return null;
-                      const seed = hashStringToInt(r.player_name);
-                      const hue = seed % 360;
-                      const glowColor = `hsl(${hue} 100% 50%)`;
-                      const podiumHeights = { 1: 160, 2: 120, 3: 80 };
+<div
+  style={{
+    position: "relative",
+    background: "#000",
+    borderRadius: 16,
+    padding: "16px 8px 0",
+    marginBottom: 24,
+    overflow: "hidden",
+  }}
+>
+  {/* Faint crest watermark */}
+  <div
+    aria-hidden="true"
+    style={{
+      position: "absolute",
+      inset: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      pointerEvents: "none",
+      zIndex: 0,
+      opacity: 0.06,
+      filter: "grayscale(1)",
+    }}
+  >
+    <ShieldAvatar name="GVK Open" size={180} />
+  </div>
 
-                      return (
-                        <div
-                          key={`podium-${slot.position}`}
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            flex: 1,
-                            maxWidth: 120,
-                          }}
-                        >
-                          {/* Podium Box */}
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              padding: 12,
-                              borderRadius: "12px 12px 0 0",
-                              background: glowColor,
-                              opacity: 0.9,
-                              width: "100%",
-                              order: 2,
-                              boxShadow: `0 0 20px ${glowColor}60`,
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: "relative",
-                                marginBottom: 8,
-                                order: -1,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  inset: -8,
-                                  background: glowColor,
-                                  borderRadius: "50%",
-                                  opacity: 0.4,
-                                  filter: "blur(12px)",
-                                }}
-                                aria-hidden="true"
-                              />
-                              <ShieldAvatar name={r.player_name} size={slot.position === 1 ? 72 : 56} />
-                            </div>
+  {/* Podium slots */}
+  <div
+    style={{
+      position: "relative",
+      zIndex: 1,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "flex-end",
+      gap: 6,
+      minHeight: 160,
+    }}
+  >
+    {[
+      {
+        position: 2,
+        row: rankedRows.find((r) => r.rank === 2),
+        bg: "linear-gradient(145deg, #c0c0c0, #e8e8e8)",
+        border: "#a8a8a8",
+        barH: 80,
+      },
+      {
+        position: 1,
+        row: rankedRows.find((r) => r.rank === 1),
+        bg: "linear-gradient(145deg, #b8860b, #ffd700)",
+        border: "#b8860b",
+        barH: 110,
+      },
+      {
+        position: 3,
+        row: rankedRows.find((r) => r.rank === 3),
+        bg: "linear-gradient(145deg, #8b4513, #cd7f32)",
+        border: "#8b4513",
+        barH: 55,
+      },
+    ].map((slot) => {
+      const r = slot.row;
+      if (!r) return null;
 
-                            <div
-                              style={{
-                                fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                                fontSize: 24,
-                                fontWeight: 700,
-                                color: "rgba(74, 69, 64, 0.95)",
-                                marginBottom: 4,
-                              }}
-                            >
-                              #{slot.position}
-                            </div>
+      return (
+        <div
+          key={`podium-${slot.position}`}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            flex: 1,
+            maxWidth: 110,
+            minWidth: 0,
+          }}
+        >
+          {/* Card */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              padding: "10px 6px 8px",
+              borderRadius: "10px 10px 0 0",
+              background: slot.bg,
+              width: "100%",
+              boxShadow: `0 0 16px ${slot.border}80`,
+            }}
+          >
+            {/* Avatar */}
+            <div style={{ position: "relative", marginBottom: 6 }}>
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: -6,
+                  background: slot.border,
+                  borderRadius: "50%",
+                  opacity: 0.3,
+                  filter: "blur(8px)",
+                }}
+              />
+              <ShieldAvatar
+                name={r.player_name}
+                size={slot.position === 1 ? 52 : 40}
+              />
+            </div>
 
-                            <div
-                              style={{
-                                textAlign: "center",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                width: "100%",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                marginBottom: 4,
-                              }}
-                            >
-                              {r.player_name}
-                            </div>
+            {/* Rank */}
+            <div
+              style={{
+                fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                fontSize: 18,
+                fontWeight: 700,
+                color: "#000",
+                lineHeight: 1,
+                marginBottom: 3,
+              }}
+            >
+              #{slot.position}
+            </div>
 
-                            <div
-                              style={{
-                                fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
-                                fontSize: 16,
-                                fontWeight: 700,
-                                color: "rgba(74, 69, 64, 0.95)",
-                              }}
-                            >
-                              {r.total_points} pts
-                            </div>
-                          </div>
+            {/* Name */}
+            <div
+              style={{
+                textAlign: "center",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                width: "100%",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#000",
+                marginBottom: 3,
+                padding: "0 2px",
+              }}
+            >
+              {r.player_name}
+            </div>
 
-                          {/* Podium Bar */}
-                          <div
-                            style={{
-                              width: "100%",
-                              height: podiumHeights[slot.position as keyof typeof podiumHeights],
-                              background: `linear-gradient(to right, ${glowColor}40, ${glowColor}20)`,
-                              borderLeft: `1px solid ${glowColor}60`,
-                              borderRight: `1px solid ${glowColor}60`,
-                              borderBottom: `2px solid ${glowColor}`,
-                              order: 3,
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
+            {/* Points */}
+            <div
+              style={{
+                fontFamily: '"Merriweather",Georgia,"Times New Roman",serif',
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#000",
+              }}
+            >
+              {r.total_points} pts
+            </div>
+          </div>
+
+          {/* Podium bar */}
+          <div
+            style={{
+              width: "100%",
+              height: slot.barH,
+              background: `linear-gradient(to bottom, ${slot.border}60, ${slot.border}20)`,
+              borderLeft: `1px solid ${slot.border}80`,
+              borderRight: `1px solid ${slot.border}80`,
+              borderBottom: `2px solid ${slot.border}`,
+            }}
+          />
+        </div>
+      );
+    })}
+  </div>
+</div>
 
                   {/* Remaining players grid */}
                   <div
