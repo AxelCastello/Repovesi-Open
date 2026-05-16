@@ -121,9 +121,9 @@ export default function LoginPage() {
       {normalized && (
         <div className="muted" style={{ fontSize: 11, marginTop: 12, padding: 8, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 4 }}>
           <div><strong>Tunnistetiedot:</strong></div>
-          <div>Email: {derivedEmail}</div>
+          
           <div>Normitettu käyttäjä: {normalized}</div>
-          <div>Sessiotili: {sessionEmail ?? "ei kirjautuneena"}</div>
+          
         </div>
       )}
       <p className="muted" style={{ marginBottom: 0 }}>
