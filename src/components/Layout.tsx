@@ -33,28 +33,31 @@ export default function Layout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <div className="nav-right">
-          <img src="/gamlakarleby-crest.png" alt="Gamlakarleby crest" className="nav-crest" />
-          <div className="nav-user">{displayName}</div>
-          {session ? (
-            <button
-              onClick={handleSignOut}
-              style={{
-                marginLeft: 12,
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.2)",
-                background: "rgba(255,255,255,0.08)",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
-              Kirjaudu ulos
-            </button>
-          ) : null}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <img src="/gamlakarleby-crest.png" alt="Gamlakarleby crest" className="nav-crest" />
+              <div className="nav-user">{displayName}</div>
+            </div>
+            {session ? (
+              <button
+                onClick={handleSignOut}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  background: "rgba(255,255,255,0.08)",
+                  color: "white",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Kirjaudu ulos
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
       <div className="container">{children}</div>
     </div>
   );
 }
-
